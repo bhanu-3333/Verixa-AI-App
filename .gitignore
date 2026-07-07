@@ -12,6 +12,24 @@ yarn-error.log.*
 pnpm-debug.log
 pnpm-debug.log.*
 
+# Python
+venv/
+env/
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+*.egg
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+*.pyc
+
 # Expo
 .expo/
 .expo-shared/
