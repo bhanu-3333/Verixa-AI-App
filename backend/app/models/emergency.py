@@ -1,20 +1,22 @@
 """
-Emergency Model — Placeholder
-Represents emergency communication data in MongoDB
-Full implementation in Phase 3
+Verixa AI — Emergency Contact + Interaction Models
+Two collections:
+  emergency_contacts  — saved contacts per user
+  (emergency SOS records saved to chat_history with module="emergency")
 """
 
-# Placeholder class — database fields will be defined in Phase 3
-class EmergencyModel:
-    """
-    Represents an emergency interaction document in MongoDB
-    Fields to be implemented in Phase 3:
-    - id: ObjectId
-    - user_id: ObjectId (ref: UserModel)
-    - emergency_type: str  (medical / fire / police)
-    - location: dict       (lat, lng)
-    - communication_log: list[dict]
-    - resolved: bool
-    - created_at: datetime
-    """
-    COLLECTION = "emergency_interactions"
+from datetime import datetime, timezone
+from typing import Optional
+from pydantic import BaseModel, Field
+
+
+class EmergencyContactDocument(BaseModel):
+    """Represents a row in `emergency_contacts`."""
+    user_id:      str
+    name:         str
+    phone:        str
+    relationship: Optional[str]  = None   # "family" | "friend" | "doctor"
+    is_primary:   bool           = False
+    created_at:   datetime       = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = {"arbitrary_types_allowed": True}
