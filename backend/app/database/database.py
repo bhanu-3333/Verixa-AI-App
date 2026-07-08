@@ -1,74 +1,117 @@
 """
-MongoDB Connection Module
-Initializes the async MongoDB client using Motor
-Only handles connection lifecycle — no CRUD operations here
+Verixa AI — MongoDB Connection & Collection Manager
+Uses Motor (async PyMongo driver) for non-blocking database I/O.
+
+Responsibilities:
+  • Connect / disconnect lifecycle
+  • Auto-create all required collections on startup
+  • Expose typed collection accessors used by services
 """
 
-from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo.errors import ConnectionFailure
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorCollection
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from app.config.config import settings
+from app.utils.logger import db_logger
 
 
 class Database:
     """
-    Database connection handler
-    Manages MongoDB client lifecycle (connect / disconnect)
+    Single shared MongoDB connection.
+    Instantiated once and imported as `db` everywhere.
     """
 
     def __init__(self):
-        self.client: AsyncIOMotorClient = None
-        self.db = None
+        self.client: AsyncIOMotorClient   = None
+        self.db:     AsyncIOMotorDatabase = None
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Lifecycle
+    # ──────────────────────────────────────────────────────────────────────────
 
     async def connect(self):
         """
-        Establish connection to MongoDB
-        Called during FastAPI application startup
+        Open the MongoDB connection and verify it with a ping.
+        Called from FastAPI lifespan startup.
         """
         try:
-            # Create the async MongoDB client
-            self.client = AsyncIOMotorClient(settings.MONGODB_URL)
-            
-            # Get the specific database (creates it lazily if not exists)
+            db_logger.info(f"Connecting to MongoDB: {settings.MONGO_URI}")
+            self.client = AsyncIOMotorClient(
+                settings.MONGO_URI,
+                serverSelectionTimeoutMS=5000,   # fail fast if unreachable
+            )
             self.db = self.client[settings.DATABASE_NAME]
-            
-            # Verify connection is alive
+
+            # Verify connection
             await self.client.admin.command("ping")
-            
-            print(f"[Database] Connected to MongoDB at: {settings.MONGODB_URL}")
-            print(f"[Database] Using database: {settings.DATABASE_NAME}")
-            
-        except ConnectionFailure as e:
-            print(f"[Database] Failed to connect to MongoDB: {e}")
+            db_logger.info(f"MongoDB connected — database: '{settings.DATABASE_NAME}'")
+
+            # Auto-create collections
+            await self._ensure_collections()
+
+        except (ConnectionFailure, ServerSelectionTimeoutError) as exc:
+            db_logger.error(f"MongoDB connection FAILED: {exc}")
             raise
-        except Exception as e:
-            print(f"[Database] Unexpected error during connection: {e}")
+        except Exception as exc:
+            db_logger.error(f"Unexpected DB error: {exc}")
             raise
 
     async def disconnect(self):
-        """
-        Close the MongoDB connection
-        Called during FastAPI application shutdown
-        """
+        """Close the connection. Called from FastAPI lifespan shutdown."""
         if self.client:
             self.client.close()
-            print("[Database] MongoDB connection closed")
+            db_logger.info("MongoDB connection closed")
 
-    def get_db(self):
-        """
-        Return the active database instance
-        Used by repositories and services to get collection handles
-        """
-        return self.db
+    # ──────────────────────────────────────────────────────────────────────────
+    # Collection bootstrap
+    # ──────────────────────────────────────────────────────────────────────────
 
-    def get_collection(self, collection_name: str):
+    async def _ensure_collections(self):
         """
-        Return a specific collection from the database
-        Usage: db.get_collection("users")
+        Create all required collections if they don't exist yet.
+        MongoDB creates collections lazily on first insert, but explicit
+        creation lets us add validators / indexes later without migration pain.
         """
+        required = [
+            settings.COL_USERS,
+            settings.COL_TRANSLATIONS,
+            settings.COL_HOSPITAL_HISTORY,
+            settings.COL_BANK_HISTORY,
+            settings.COL_EMERGENCY_CONTACTS,
+            settings.COL_CHAT_HISTORY,
+            settings.COL_APP_SETTINGS,
+        ]
+        existing = await self.db.list_collection_names()
+        for name in required:
+            if name not in existing:
+                await self.db.create_collection(name)
+                db_logger.info(f"  Created collection: '{name}'")
+            else:
+                db_logger.info(f"  Collection exists:  '{name}'")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Collection accessors (typed helpers used by services)
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _col(self, name: str) -> AsyncIOMotorCollection:
         if self.db is None:
-            raise RuntimeError("Database is not connected. Call connect() first.")
-        return self.db[collection_name]
+            raise RuntimeError("Database is not initialised. connect() must be called first.")
+        return self.db[name]
+
+    @property
+    def users(self)              -> AsyncIOMotorCollection: return self._col(settings.COL_USERS)
+    @property
+    def translations(self)       -> AsyncIOMotorCollection: return self._col(settings.COL_TRANSLATIONS)
+    @property
+    def hospital_history(self)   -> AsyncIOMotorCollection: return self._col(settings.COL_HOSPITAL_HISTORY)
+    @property
+    def bank_history(self)       -> AsyncIOMotorCollection: return self._col(settings.COL_BANK_HISTORY)
+    @property
+    def emergency_contacts(self) -> AsyncIOMotorCollection: return self._col(settings.COL_EMERGENCY_CONTACTS)
+    @property
+    def chat_history(self)       -> AsyncIOMotorCollection: return self._col(settings.COL_CHAT_HISTORY)
+    @property
+    def app_settings(self)       -> AsyncIOMotorCollection: return self._col(settings.COL_APP_SETTINGS)
 
 
-# Singleton database instance shared across the app
+# ── Singleton ──────────────────────────────────────────────────────────────────
 db = Database()
