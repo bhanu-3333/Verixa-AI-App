@@ -1,19 +1,25 @@
 """
-Chat Model — Placeholder
-Represents a chat/translation session in MongoDB
-Full implementation in Phase 3
+Verixa AI — Chat History Model
+Represents a document in the `chat_history` collection.
 """
 
-# Placeholder class — database fields will be defined in Phase 3
-class ChatModel:
-    """
-    Represents a chat session document in MongoDB
-    Fields to be implemented in Phase 3:
-    - id: ObjectId
-    - user_id: ObjectId (ref: UserModel)
-    - source_language: str
-    - target_language: str
-    - messages: list[dict]
-    - created_at: datetime
-    """
-    COLLECTION = "chats"
+from datetime import datetime, timezone
+from typing import Optional, List
+from pydantic import BaseModel, Field
+
+
+class ChatMessage(BaseModel):
+    role:    str   # "user" | "assistant"
+    content: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ChatDocument(BaseModel):
+    user_id:         str
+    module:          str        # "hospital" | "bank" | "emergency" | "translator"
+    messages:        List[ChatMessage] = []
+    source_language: str        = "en"
+    target_language: str        = "en"
+    created_at:      datetime   = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = {"arbitrary_types_allowed": True}
