@@ -1,31 +1,49 @@
 """
-Hospital Routes
-Handles all hospital communication endpoints
-AI Engine + MongoDB integration in Phase 4
+Verixa AI — Hospital Routes
+POST /api/v1/hospital/symptoms
+POST /api/v1/hospital/chat
+GET  /api/v1/hospital/history/{user_id}
 """
 
 from fastapi import APIRouter
-from app.schemas.hospital import HospitalChatRequest, HospitalChatResponse
-from app.services.hospital_service import hospital_chat, get_hospital_history
+from app.schemas.hospital import SymptomRequest, HospitalChatRequest
+from app.services.hospital_service import (
+    create_hospital_session, hospital_chat, get_hospital_history
+)
+from app.utils.response import success_response, created_response, not_found_response
 
-# Create router with /hospital prefix
 router = APIRouter(prefix="/hospital", tags=["Hospital"])
 
 
-@router.get("/hospital")
-async def hospital_placeholder():
-    """
-    Placeholder: Hospital route health check
-    Phase 4: Will accept HospitalChatRequest body
-              and route to AI Engine for medical communication
-    """
-    return {"message": "Hospital Route Working"}
+@router.post("/symptoms", status_code=201, summary="Start a hospital session with symptoms")
+async def submit_symptoms(body: SymptomRequest):
+    result = await create_hospital_session(
+        user_id=body.user_id,
+        hospital_name=body.hospital_name,
+        department=body.department,
+        symptom=body.symptom,
+        pain_location=body.pain_location,
+        pain_intensity=body.pain_intensity,
+        language=body.language,
+    )
+    return created_response("Hospital session created", result)
 
 
-@router.get("/history")
-async def hospital_history_placeholder():
-    """
-    Placeholder: Hospital chat history route health check
-    Phase 4: Will retrieve session history from MongoDB
-    """
-    return {"message": "Hospital History Route Working"}
+@router.post("/chat", summary="Send a message in a hospital session")
+async def hospital_chat_endpoint(body: HospitalChatRequest):
+    result = await hospital_chat(
+        user_id=body.user_id,
+        session_id=body.session_id,
+        message=body.message,
+        language=body.language,
+    )
+    return success_response("Message sent", result)
+
+
+@router.get("/history/{user_id}", summary="Get hospital session history for a user")
+async def hospital_history(user_id: str):
+    records = await get_hospital_history(user_id)
+    return success_response("Hospital history retrieved", {
+        "count": len(records),
+        "history": records,
+    })
