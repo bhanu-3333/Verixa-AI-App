@@ -1,32 +1,25 @@
-"""
-Translator Schemas — Request and Response models for translation
-AI translation logic to be connected in Phase 4 (AI Engine)
-"""
+"""Verixa AI — Translator Request / Response Schemas"""
 
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Optional, List
 
-
-# ──────────────────────────────────────────────
-# Request Schemas
-# ──────────────────────────────────────────────
 
 class TranslationRequest(BaseModel):
-    """Schema for a translation request"""
-    text: str
-    source_language: str    # e.g. "en", "hi", "ta"
-    target_language: str    # e.g. "en", "hi", "ta"
-    context: Optional[str] = None  # e.g. "medical", "banking", "emergency"
-
-
-# ──────────────────────────────────────────────
-# Response Schemas
-# ──────────────────────────────────────────────
+    text:            str            = Field(..., min_length=1, examples=["Hello, I have a headache"])
+    source_language: str            = Field(..., examples=["en"])
+    target_language: str            = Field(..., examples=["hi"])
+    context:         Optional[str]  = Field(None, examples=["medical"])
+    user_id:         Optional[str]  = None
 
 class TranslationResponse(BaseModel):
-    """Schema for a translation response"""
+    message:         str
+    id:              Optional[str]  = None
+    original_text:   Optional[str]  = None
+    translated_text: Optional[str]  = None
+    source_language: Optional[str]  = None
+    target_language: Optional[str]  = None
+
+class TranslationHistoryResponse(BaseModel):
     message: str
-    original_text: Optional[str] = None
-    translated_text: Optional[str] = None
-    source_language: Optional[str] = None
-    target_language: Optional[str] = None
+    count:   int        = 0
+    history: List[dict] = []
