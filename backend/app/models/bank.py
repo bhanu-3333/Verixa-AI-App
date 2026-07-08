@@ -1,19 +1,21 @@
 """
-Bank Model — Placeholder
-Represents banking communication data in MongoDB
-Full implementation in Phase 3
+Verixa AI — Bank History Model
+Represents a document in the `bank_history` collection.
 """
 
-# Placeholder class — database fields will be defined in Phase 3
-class BankModel:
-    """
-    Represents a bank interaction document in MongoDB
-    Fields to be implemented in Phase 3:
-    - id: ObjectId
-    - user_id: ObjectId (ref: UserModel)
-    - bank_name: str
-    - transaction_context: str
-    - communication_log: list[dict]
-    - created_at: datetime
-    """
-    COLLECTION = "bank_interactions"
+from datetime import datetime, timezone
+from typing import Optional, List
+from pydantic import BaseModel, Field
+
+
+class BankDocument(BaseModel):
+    user_id:       str
+    bank_name:     str
+    service_type:  Optional[str]  = None   # "loan" | "account" | "transfer" | "other"
+    chat_messages: List[dict]     = []
+    language:      str            = "en"
+    status:        str            = "open"
+    created_at:    datetime       = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at:    datetime       = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = {"arbitrary_types_allowed": True}
