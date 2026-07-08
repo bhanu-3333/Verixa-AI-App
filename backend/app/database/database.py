@@ -50,9 +50,13 @@ class Database:
 
         except (ConnectionFailure, ServerSelectionTimeoutError) as exc:
             db_logger.error(f"MongoDB connection FAILED: {exc}")
+            self.client = None
+            self.db = None
             raise
         except Exception as exc:
             db_logger.error(f"Unexpected DB error: {exc}")
+            self.client = None
+            self.db = None
             raise
 
     async def disconnect(self):
