@@ -1,19 +1,28 @@
 """
-Hospital Model — Placeholder
-Represents hospital/medical communication data in MongoDB
-Full implementation in Phase 3
+Verixa AI — Hospital History Model
+Represents a document in the `hospital_history` collection.
 """
 
-# Placeholder class — database fields will be defined in Phase 3
-class HospitalModel:
-    """
-    Represents a hospital interaction document in MongoDB
-    Fields to be implemented in Phase 3:
-    - id: ObjectId
-    - user_id: ObjectId (ref: UserModel)
-    - hospital_name: str
-    - department: str
-    - communication_log: list[dict]
-    - created_at: datetime
-    """
-    COLLECTION = "hospital_interactions"
+from datetime import datetime, timezone
+from typing import Optional, List
+from pydantic import BaseModel, Field
+
+
+class SymptomEntry(BaseModel):
+    symptom:       str
+    pain_location: Optional[str] = None
+    pain_intensity: Optional[int] = None   # 1–10
+
+
+class HospitalDocument(BaseModel):
+    user_id:       str
+    hospital_name: str
+    department:    Optional[str]        = None
+    symptoms:      List[SymptomEntry]   = []
+    chat_messages: List[dict]           = []
+    language:      str                  = "en"
+    status:        str                  = "open"   # "open" | "closed"
+    created_at:    datetime             = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at:    datetime             = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    model_config = {"arbitrary_types_allowed": True}
