@@ -124,15 +124,9 @@ async def root():
 
 @app.get("/health", tags=["Health"], summary="Detailed health check")
 async def health():
-    db_ok = db.db is not None
-    try:
-        if db_ok:
-            await db.client.admin.command("ping")
-    except Exception:
-        db_ok = False
-
+    db_ok = db.client is not None and db.db is not None
     return {
         "status":   "healthy" if db_ok else "degraded",
         "app":      settings.APP_NAME,
-        "database": "connected" if db_ok else "disconnected",
+        "database": "connected" if db_ok else "disconnected — add MONGO_URI to .env",
     }
