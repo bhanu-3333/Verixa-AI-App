@@ -1,34 +1,19 @@
-"""
-Auth Schemas — Request and Response models for authentication
-Full validation logic to be added in Phase 3
-"""
+"""Verixa AI — Auth Request / Response Schemas"""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional
 
-
-# ──────────────────────────────────────────────
-# Request Schemas
-# ──────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
-    """Schema for user registration request"""
-    name: str
-    email: str
-    password: str
-
+    name:     str   = Field(..., min_length=2, max_length=80, examples=["Rindhiya"])
+    email:    str   = Field(..., examples=["user@example.com"])
+    password: str   = Field(..., min_length=6, examples=["secret123"])
 
 class LoginRequest(BaseModel):
-    """Schema for user login request"""
-    email: str
-    password: str
-
-
-# ──────────────────────────────────────────────
-# Response Schemas
-# ──────────────────────────────────────────────
+    email:    str   = Field(..., examples=["user@example.com"])
+    password: str   = Field(..., examples=["secret123"])
 
 class AuthResponse(BaseModel):
-    """Schema for authentication response"""
-    message: str
-    token: str = None  # JWT token — to be populated in Phase 3
-    user_id: str = None
+    message:  str
+    user_id:  Optional[str] = None
+    token:    Optional[str] = None          # JWT — Phase 3
