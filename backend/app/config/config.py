@@ -1,56 +1,51 @@
 """
-Application Configuration Module
-Loads environment variables and provides centralized config access
+Verixa AI — Application Configuration
+Reads all values from .env using python-dotenv
+Single source of truth for every environment-dependent setting
 """
 
 import os
 from typing import Optional
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load .env file relative to this file's location
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
 
 class Settings:
     """
-    Application settings loaded from environment variables
-    Provides centralized access to configuration values
+    Centralised settings class.
+    All modules import `settings` from here — never read os.getenv directly.
     """
-    
-    # Application Settings
-    APP_NAME: str = os.getenv("APP_NAME", "Verixa AI")
-    HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8000"))
-    
-    # Database Settings
-    MONGODB_URL: Optional[str] = os.getenv("MONGODB_URL")
-    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "verixa_db")
-    
-    # Security Settings
-    SECRET_KEY: Optional[str] = os.getenv("SECRET_KEY")
-    
-    # CORS Settings (for React Native communication)
-    CORS_ORIGINS: list = [
-        "http://localhost:8081",  # Expo Metro
-        "exp://localhost:8081",    # Expo scheme
-        "*"                         # Allow all (restrict in production)
-    ]
-    
-    # Future AI Engine Settings (placeholder)
-    AI_ENGINE_URL: Optional[str] = os.getenv("AI_ENGINE_URL")
-    
-    @classmethod
-    def validate(cls):
-        """
-        Validate critical configuration values
-        Raises ValueError if required configs are missing
-        """
-        if not cls.SECRET_KEY:
-            raise ValueError("SECRET_KEY is not set in environment variables")
-        
-        if not cls.MONGODB_URL:
-            raise ValueError("MONGODB_URL is not set in environment variables")
+
+    # ── Application ───────────────────────────────────────────────────────────
+    APP_NAME: str        = os.getenv("APP_NAME", "Verixa AI")
+    HOST: str            = os.getenv("HOST", "127.0.0.1")
+    PORT: int            = int(os.getenv("PORT", "8000"))
+    DEBUG: bool          = os.getenv("DEBUG", "False").lower() == "true"
+
+    # ── Database ──────────────────────────────────────────────────────────────
+    MONGO_URI: str       = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+    DATABASE_NAME: str   = os.getenv("DATABASE_NAME", "verixa_db")
+
+    # ── Security ──────────────────────────────────────────────────────────────
+    SECRET_KEY: str      = os.getenv("SECRET_KEY", "change-me")
+
+    # ── AI Engine (Phase 4) ───────────────────────────────────────────────────
+    AI_ENGINE_URL: Optional[str] = os.getenv("AI_ENGINE_URL") or None
+
+    # ── CORS (React Native / Expo) ────────────────────────────────────────────
+    CORS_ORIGINS: list = ["*"]   # Lock down to specific origins in production
+
+    # ── MongoDB Collection Names ──────────────────────────────────────────────
+    COL_USERS              = "users"
+    COL_TRANSLATIONS       = "translations"
+    COL_HOSPITAL_HISTORY   = "hospital_history"
+    COL_BANK_HISTORY       = "bank_history"
+    COL_EMERGENCY_CONTACTS = "emergency_contacts"
+    COL_CHAT_HISTORY       = "chat_history"
+    COL_APP_SETTINGS       = "app_settings"
 
 
-# Create a singleton settings instance
+# Singleton — import this everywhere
 settings = Settings()
