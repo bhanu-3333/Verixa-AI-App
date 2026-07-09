@@ -1,18 +1,24 @@
 """
-Verixa AI — Hospital Routes
-POST /api/v1/hospital/symptoms
-POST /api/v1/hospital/chat
-GET  /api/v1/hospital/history/{user_id}
+Verixa AI — Hospital Routes (Phase 3: JWT protected)
+
+POST /api/v1/hospital/symptoms          — requires Bearer token
+POST /api/v1/hospital/chat              — requires Bearer token
+GET  /api/v1/hospital/history/{user_id} — requires Bearer token
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from app.schemas.hospital import SymptomRequest, HospitalChatRequest
 from app.services.hospital_service import (
-    create_hospital_session, hospital_chat, get_hospital_history
+    create_hospital_session, hospital_chat, get_hospital_history,
 )
-from app.utils.response import success_response, created_response, not_found_response
+from app.utils.response import success_response, created_response
+from app.utils.dependencies import get_current_user
 
-router = APIRouter(prefix="/hospital", tags=["Hospital"])
+router = APIRouter(
+    prefix="/hospital",
+    tags=["Hospital"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.post("/symptoms", status_code=201, summary="Start a hospital session with symptoms")
