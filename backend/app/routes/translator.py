@@ -1,15 +1,21 @@
 """
-Verixa AI — Translator Routes
-POST /api/v1/translator/translate
-GET  /api/v1/translator/history/{user_id}
+Verixa AI — Translator Routes (Phase 3: JWT protected)
+
+POST /api/v1/translator/translate       — requires Bearer token
+GET  /api/v1/translator/history/{user_id} — requires Bearer token
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from app.schemas.translator import TranslationRequest
 from app.services.translator_service import translate_text, get_translation_history
-from app.utils.response import success_response, created_response, not_found_response
+from app.utils.response import success_response, created_response
+from app.utils.dependencies import get_current_user
 
-router = APIRouter(prefix="/translator", tags=["Translator"])
+router = APIRouter(
+    prefix="/translator",
+    tags=["Translator"],
+    dependencies=[Depends(get_current_user)],   # ← protect entire router
+)
 
 
 @router.post("/translate", status_code=201, summary="Submit text for translation")
