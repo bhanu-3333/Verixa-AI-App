@@ -1,22 +1,28 @@
 """
-Verixa AI — Emergency Routes
-POST   /api/v1/emergency/sos
-GET    /api/v1/emergency/contacts/{user_id}
-POST   /api/v1/emergency/contact
-DELETE /api/v1/emergency/contact/{id}
+Verixa AI — Emergency Routes (Phase 3: JWT protected)
+
+POST   /api/v1/emergency/sos                    — requires Bearer token
+GET    /api/v1/emergency/contacts/{user_id}     — requires Bearer token
+POST   /api/v1/emergency/contact                — requires Bearer token
+DELETE /api/v1/emergency/contact/{contact_id}   — requires Bearer token
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from app.schemas.emergency import SOSRequest, EmergencyContactRequest
 from app.services.emergency_service import (
-    trigger_sos, add_contact, get_contacts, delete_contact
+    trigger_sos, add_contact, get_contacts, delete_contact,
 )
 from app.utils.response import (
     success_response, created_response,
     not_found_response, error_response,
 )
+from app.utils.dependencies import get_current_user
 
-router = APIRouter(prefix="/emergency", tags=["Emergency"])
+router = APIRouter(
+    prefix="/emergency",
+    tags=["Emergency"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.post("/sos", status_code=201, summary="Trigger an SOS emergency alert")
@@ -36,7 +42,7 @@ async def sos(body: SOSRequest):
 async def list_contacts(user_id: str):
     contacts = await get_contacts(user_id)
     return success_response("Contacts retrieved", {
-        "count": len(contacts),
+        "count":    len(contacts),
         "contacts": contacts,
     })
 
