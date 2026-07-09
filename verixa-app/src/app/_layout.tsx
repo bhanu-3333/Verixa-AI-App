@@ -1,18 +1,34 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+/**
+ * Verixa AI — Root Layout
+ * Entry point for expo-router.
+ * Route groups:
+ *   /        → index.tsx  (splash)
+ *   /(auth)/ → login, register
+ *   /(app)/  → home (JWT-protected)
+ */
+
+import { useEffect } from 'react';
+import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
-
+// Keep the native splash visible until we're ready
 SplashScreen.preventAutoHideAsync();
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+export default function RootLayout() {
+  useEffect(() => {
+    // Hide native splash — our JS splash screen takes over
+    SplashScreen.hideAsync();
+  }, []);
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <>
+      <StatusBar style="light" />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index"  options={{ animation: 'none' }} />
+        <Stack.Screen name="(auth)" options={{ animation: 'none' }} />
+        <Stack.Screen name="(app)"  options={{ animation: 'fade' }} />
+      </Stack>
+    </>
   );
 }
