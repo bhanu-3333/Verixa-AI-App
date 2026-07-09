@@ -1,16 +1,17 @@
 """
 Verixa AI — FastAPI Application
-Phase 2: Backend Foundation + MongoDB Integration
+Phase 3: JWT Authentication + Protected Routes
 
 Request lifecycle:
-  Client → CORS → Request Logger → Router → Service → MongoDB
-                                                     → AI Engine (Phase 4)
+  Client → CORS → Request Logger → Router → Auth Dependency → Service → MongoDB
+                                                             → AI Engine (Phase 4)
 """
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from fastapi.openapi.utils import get_openapi
 from pymongo.errors import PyMongoError
 import time
 
@@ -64,14 +65,59 @@ app = FastAPI(
         "Covers hospital communication, banking assistance, and emergency response "
         "with real-time AI translation.\n\n"
         "**Phase 2**: Backend Foundation + MongoDB Integration\n"
-        "**Phase 3**: Authentication (JWT)\n"
-        "**Phase 4**: AI Engine Integration"
+        "**Phase 3**: JWT Authentication ✅\n"
+        "**Phase 4**: AI Engine Integration\n\n"
+        "---\n"
+        "### Authentication\n"
+        "1. **Register** via `POST /api/v1/auth/register`\n"
+        "2. **Login** via `POST /api/v1/auth/login` — copy the `access_token`\n"
+        "3. Click the **Authorize 🔒** button above, enter `Bearer <token>`\n"
+        "4. All protected endpoints will automatically use your token"
     ),
-    version="2.0.0",
+    version="3.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+
+# ── Swagger Bearer Token Authorization ────────────────────────────────────────
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    # Add HTTPBearer security scheme so Swagger shows the Authorize button
+    schema.setdefault("components", {})
+    schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type":         "http",
+            "scheme":       "bearer",
+            "bearerFormat": "JWT",
+            "description":  "Paste your JWT token here (without the 'Bearer ' prefix)",
+        }
+    }
+    # Apply security globally to all operations that aren't explicitly public
+    for path_data in schema.get("paths", {}).values():
+        for operation in path_data.values():
+            # Skip public auth endpoints
+            tags = operation.get("tags", [])
+            summary = operation.get("summary", "")
+            if "Authentication" in tags and summary in (
+                "Register a new user",
+                "Login and receive a JWT token",
+                "Logout (client should discard the token)",
+            ):
+                continue
+            operation.setdefault("security", [{"BearerAuth": []}])
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
 
 
 # ── Exception Handlers ─────────────────────────────────────────────────────────
@@ -116,7 +162,7 @@ app.include_router(emergency_router,  prefix=API_V1)
 async def root():
     return {
         "app":     settings.APP_NAME,
-        "version": "2.0.0",
+        "version": app.version,
         "status":  "running",
         "docs":    "/docs",
     }
