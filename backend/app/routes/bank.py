@@ -1,16 +1,22 @@
 """
-Verixa AI — Bank Routes
-POST /api/v1/bank/service
-POST /api/v1/bank/chat
-GET  /api/v1/bank/history/{user_id}
+Verixa AI — Bank Routes (Phase 3: JWT protected)
+
+POST /api/v1/bank/service               — requires Bearer token
+POST /api/v1/bank/chat                  — requires Bearer token
+GET  /api/v1/bank/history/{user_id}     — requires Bearer token
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from app.schemas.bank import BankServiceRequest, BankChatRequest
 from app.services.bank_service import create_bank_session, bank_chat, get_bank_history
 from app.utils.response import success_response, created_response
+from app.utils.dependencies import get_current_user
 
-router = APIRouter(prefix="/bank", tags=["Bank"])
+router = APIRouter(
+    prefix="/bank",
+    tags=["Bank"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.post("/service", status_code=201, summary="Start a bank interaction session")
