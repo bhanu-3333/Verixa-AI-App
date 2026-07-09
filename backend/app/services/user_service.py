@@ -1,63 +1,107 @@
 """
-Verixa AI — User Service
-CRUD operations for the `users` collection.
-Authentication logic (hashing, JWT) added in Phase 3.
+Verixa AI — User Service (Phase 3)
+Full bcrypt password hashing + JWT token generation.
+All Phase 2 function signatures are preserved.
 """
 
 from datetime import datetime, timezone
 from app.database.database import db
 from app.models.user import UserDocument
-from app.utils.helpers import serialize_doc, serialize_docs
+from app.utils.helpers import serialize_doc
 from app.utils.logger import app_logger
+from app.utils.password import hash_password, verify_password
+from app.utils.jwt import create_access_token
 
+
+# ── Internal helper ────────────────────────────────────────────────────────────
+
+def _public(user: dict) -> dict:
+    """Strip sensitive fields before returning user data to the client."""
+    return {
+        "id":                 user.get("id"),
+        "name":               user.get("name"),
+        "email":              user.get("email"),
+        "preferred_language": user.get("preferred_language", "en"),
+        "is_active":          user.get("is_active", True),
+        "created_at":         user.get("created_at"),
+    }
+
+
+# ── Public API ─────────────────────────────────────────────────────────────────
 
 async def create_user(name: str, email: str, password: str) -> dict:
     """
-    Insert a new user document.
-    Phase 3: password will be hashed before storage.
+    Register a new user.
+    - Checks for duplicate email.
+    - Hashes password with bcrypt.
+    - Returns safe public user dict.
     """
-    # Check duplicate email
     existing = await db.users.find_one({"email": email})
     if existing:
         return {"error": "Email already registered"}
 
-    doc = UserDocument(name=name, email=email, hashed_password=password)
+    doc = UserDocument(
+        name=name,
+        email=email,
+        hashed_password=hash_password(password),   # ← bcrypt
+    )
     result = await db.users.insert_one(doc.model_dump())
-    app_logger.info(f"User created: {result.inserted_id}")
-    return {"id": str(result.inserted_id), "name": name, "email": email}
+    app_logger.info(f"User registered: {result.inserted_id}")
+
+    saved = await db.users.find_one({"_id": result.inserted_id})
+    return _public(serialize_doc(saved))
+
+
+async def login_user(email: str, password: str) -> dict:
+    """
+    Authenticate user and return a signed JWT.
+    Returns {"error": "..."} on failure so the route can return proper HTTP codes.
+    """
+    raw = await db.users.find_one({"email": email})
+    if not raw:
+        return {"error": "User not found"}
+
+    if not verify_password(password, raw.get("hashed_password", "")):
+        return {"error": "Invalid credentials"}
+
+    user = serialize_doc(raw)
+    token = create_access_token({
+        "sub":   user["id"],
+        "email": user["email"],
+        "name":  user["name"],
+    })
+
+    app_logger.info(f"User logged in: {user['id']}")
+    return {
+        "access_token": token,
+        "token_type":   "bearer",
+        "user":         _public(user),
+    }
+
+
+async def logout_user(user_id: str) -> dict:
+    """
+    Stateless JWT logout — client discards the token.
+    Phase 4 option: maintain a token blacklist in Redis.
+    """
+    app_logger.info(f"User logged out: {user_id}")
+    return {"message": "Logged out successfully"}
 
 
 async def get_user_by_email(email: str) -> dict | None:
-    """Fetch a user document by email."""
+    """Fetch a user document by email. Returns serialized dict or None."""
     doc = await db.users.find_one({"email": email})
     return serialize_doc(doc)
 
 
 async def get_user_by_id(user_id: str) -> dict | None:
-    """Fetch a user document by string ID."""
+    """Fetch a user document by string ID. Returns public dict or None."""
     from app.utils.helpers import str_to_objectid
     try:
         oid = str_to_objectid(user_id)
     except ValueError:
         return None
     doc = await db.users.find_one({"_id": oid})
-    return serialize_doc(doc)
-
-
-async def login_user(email: str, password: str) -> dict:
-    """
-    Validate credentials.
-    Phase 3: will compare hashed password and return a real JWT.
-    """
-    user = await get_user_by_email(email)
-    if not user:
-        return {"error": "User not found"}
-    # Placeholder credential check — Phase 3 replaces with bcrypt
-    if user.get("hashed_password") != password:
-        return {"error": "Invalid credentials"}
-    return {"message": "Login successful (placeholder)", "user_id": user["id"]}
-
-
-async def logout_user(user_id: str) -> dict:
-    """Placeholder logout — Phase 3 invalidates token."""
-    return {"message": "Logged out successfully"}
+    if not doc:
+        return None
+    return _public(serialize_doc(doc))
