@@ -30,6 +30,8 @@ class Settings:
 
     # ── Security ──────────────────────────────────────────────────────────────
     SECRET_KEY: str      = os.getenv("SECRET_KEY", "change-me")
+    ALGORITHM: str       = os.getenv("ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
     # ── AI Engine (Phase 4) ───────────────────────────────────────────────────
     AI_ENGINE_URL: Optional[str] = os.getenv("AI_ENGINE_URL") or None
