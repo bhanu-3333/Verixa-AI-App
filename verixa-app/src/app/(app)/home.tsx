@@ -6,8 +6,8 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity,
-  StyleSheet, Alert, ActivityIndicator,
-  ScrollView,
+  StyleSheet, ActivityIndicator,
+  ScrollView, Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { getUser, clearAuth } from '../../utils/storage';
@@ -25,21 +25,16 @@ export default function HomeScreen() {
   }, []);
 
   async function handleLogout() {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: async () => {
-            await clearAuth();               // remove token + user from storage
-            router.replace('/(auth)/login'); // go back to login
-          },
-        },
-      ],
-    );
+    // Alert.alert doesn't work on web — confirm directly
+    const confirmed =
+      Platform.OS === 'web'
+        ? window.confirm('Are you sure you want to logout?')
+        : true; // on native we'll use a simpler direct logout
+
+    if (confirmed) {
+      await clearAuth();
+      router.replace('/(auth)/login');
+    }
   }
 
   if (loading) {
