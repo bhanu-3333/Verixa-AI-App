@@ -100,6 +100,20 @@ export default function HomeScreen() {
         </Text>
       </View>
 
+      {/* Sign Language Avatar Feature */}
+      <TouchableOpacity
+        style={styles.featureCard}
+        onPress={() => router.push('/(app)/communication')}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.featureIcon}>🤟</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.featureTitle}>Sign Language Avatar</Text>
+          <Text style={styles.featureDesc}>Translate text into 3D sign language gestures</Text>
+        </View>
+        <Text style={styles.featureArrow}>›</Text>
+      </TouchableOpacity>
+
       {/* Logout */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
         <Text style={styles.logoutText}>Logout</Text>
@@ -146,6 +160,20 @@ const styles = StyleSheet.create({
     paddingVertical: 12, paddingHorizontal: 16,
   },
   noticeText:   { fontSize: 13, color: '#1565c0', textAlign: 'center' },
+
+  featureCard: {
+    marginHorizontal: 20, marginTop: 20,
+    backgroundColor: '#fff', borderRadius: 14,
+    paddingVertical: 18, paddingHorizontal: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+    borderWidth: 1.5, borderColor: '#208AEF20',
+  },
+  featureIcon:  { fontSize: 28 },
+  featureTitle: { fontSize: 16, fontWeight: '700', color: C.text },
+  featureDesc:  { fontSize: 12, color: C.muted, marginTop: 2 },
+  featureArrow: { fontSize: 24, color: C.muted, fontWeight: '300' },
 
   logoutBtn:    {
     marginHorizontal: 20, marginTop: 24,

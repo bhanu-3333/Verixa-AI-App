@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Verixa AI Sign Language Avatar</title>
+  <link rel="stylesheet" href="cwasa/cwasa.css" />
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0b0f19;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    #avatar-container {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .CWASAAvatar {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+
+    #loading-overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-color: #0b0f19;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      transition: opacity 0.5s ease;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+
+    #status-text {
+      margin-top: 12px;
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    .spinner {
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border-left-color: #3b82f6;
+      animation: spin 1s linear infinite;
+      margin-bottom: 12px;
+    }
+
+    @keyframes spin {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+  <script type="text/javascript" src="cwasa/allcsa.js"></script>
+</head>
+<body>
+
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <div>Loading 3D Signing Avatar...</div>
+    <div id="status-text">Connecting to avatar engine</div>
+  </div>
+
+  <div id="avatar-container">
+    <!--
+      CWASAAvatar av0 — allcsa.js scans for this class to create the WebGL canvas.
+      CWASAPanel av0 — allcsa.js creates avatar control widgets (menuAv, etc.) inside this.
+      Both need the av0 suffix for the selectors to match.
+    -->
+    <div class="CWASAAvatar av0" id="playerPanel"></div>
+  </div>
+
+  <div class="CWASAPanel av0" style="display:none;"></div>
+
+  <script type="text/javascript">
+    // ── State ─────────────────────────────────────────────────────────────────
+    var isReady      = false;
+    var pendingQueue = []; // Commands arriving before avatarready fires
+
+    // ── Overlay helpers ───────────────────────────────────────────────────────
+    function setStatusText(msg) {
+      var el = document.getElementById("status-text");
+      if (el) el.textContent = msg;
+    }
+
+    function hideOverlay() {
+      var overlay = document.getElementById("loading-overlay");
+      if (!overlay) return;
+      overlay.style.opacity = 0;
+      setTimeout(function() { overlay.style.display = "none"; }, 500);
+    }
+
+    // ── RN/Web bridge ─────────────────────────────────────────────────────────
+    function sendEventToApp(data) {
+      var msg = JSON.stringify(data);
+      // Native WebView (Android / iOS)
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(msg);
+      }
+      // Web iframe → parent window
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(msg, "*");
+      }
+    }
+
+    // ── Playback API ──────────────────────────────────────────────────────────
+    function playSiGML(sigmlText) {
+      try {
+        CWASA.playSiGMLText(sigmlText);
+      } catch (e) {
+        sendEventToApp({ status: "playback_error", message: String(e.message) });
+      }
+    }
+
+    function stopSiGML() {
+      try { CWASA.stopSiGML(); } catch (e) { /* non-critical */ }
+    }
+
+    function setAvatar(avatarName) {
+      try {
+        var name = avatarName.toLowerCase();
+        var selectEl = document.querySelector(".menuAv.av0");
+        if (selectEl) {
+          selectEl.value = name;
+          selectEl.dispatchEvent(new Event("change"));
+        }
+      } catch (e) {
+        sendEventToApp({ status: "error", message: "setAvatar failed: " + e.message });
+      }
+    }
+
+    // ── Command dispatcher ────────────────────────────────────────────────────
+    function dispatch(payload) {
+      if (!payload || !payload.action) return;
+      if      (payload.action === "play")      { playSiGML(payload.sigml); }
+      else if (payload.action === "stop")      { stopSiGML(); }
+      else if (payload.action === "setAvatar") { setAvatar(payload.avatar); }
+    }
+
+    // ── Incoming bridge messages ───────────────────────────────────────────────
+    function handleAppMessage(event) {
+      try {
+        var payload = (typeof event.data === "string")
+          ? JSON.parse(event.data)
+          : event.data;
+        if (!payload) return;
+        if (!isReady) { pendingQueue.push(payload); return; }
+        dispatch(payload);
+      } catch (e) { /* suppress webpack/devtools noise */ }
+    }
+    window.addEventListener("message",   handleAppMessage);
+    document.addEventListener("message", handleAppMessage);
+
+    // ── CWASA Init ────────────────────────────────────────────────────────────
+    function initPlayer() {
+      try {
+        setStatusText("Initializing WebGL engine...");
+
+        // ── jasBase: WHY computed from window.location ────────────────────────
+        //
+        // avatar.html is served by FastAPI at:
+        //   http://<host>:8000/static/avatar.html
+        //
+        // CWASA resolves all asset paths relative to jasBase:
+        //   avatars/COMMON.jar  → jasBase + "avatars/COMMON.jar"
+        //   avatars/anna.jar    → jasBase + "avatars/anna.jar"
+        //   sigml/iTakeMug.sigml → jasBase + "sigml/iTakeMug.sigml"
+        //
+        // allcsa.js line 5379:
+        //   theConfig.jasBase = Data.asDir(theConfig.jasBase || "http://localhost/jas/loc2025/")
+        //
+        // Empty string "" is falsy → the || fallback fires → wrong host.
+        // Non-empty absolute URL → the || is skipped → correct host is used.
+        //
+        // window.location.origin correctly resolves to the serving host on all
+        // devices: localhost, Android emulator (10.0.2.2), or real device IP.
+        // ─────────────────────────────────────────────────────────────────────
+        var origin  = window.location.origin;       // e.g. http://10.x.x.x:8000
+        var jasBase = origin + "/static/cwasa/";    // → http://10.x.x.x:8000/static/cwasa/
+
+        // Hook CWASA lifecycle events BEFORE calling init()
+        Logger.addHook("avatarready", function() {
+          isReady = true;
+          hideOverlay();
+          sendEventToApp({ status: "ready" });
+          // Drain commands that arrived while the avatar was still loading
+          while (pendingQueue.length > 0) { dispatch(pendingQueue.shift()); }
+        });
+
+        Logger.addHook("avatarloading", function(msg) {
+          setStatusText("Loading avatar: " + (msg || "..."));
+        });
+
+        Logger.addHook("status", function(msg) {
+          if (msg) setStatusText(String(msg));
+        });
+
+        // ── Inline config object passed directly to CWASA.init() ──────────────
+        //
+        // Passing config inline (not via cwacfg.json) guarantees jasBase is
+        // set BEFORE cwaConfigLoad() evaluates it at line 5379 in allcsa.js.
+        //
+        // useAvatarJARs: true
+        //   → CWASA loads from   avJARBase/  ("avatars/")
+        //   → Requests:  http://<host>:8000/static/cwasa/avatars/COMMON.jar
+        //                http://<host>:8000/static/cwasa/avatars/anna.jar
+        //   JARs are standard ZIP archives served as binary by FastAPI.
+        //   allcsa.js parses them in-browser via its built-in ZIP reader.
+        //
+        // useAvatarJARs: false would require avjson/ directory — NOT present.
+        // ─────────────────────────────────────────────────────────────────────
+        CWASA.init({
+          jasBase        : jasBase,
+          cwaBase        : ".",
+          jasVersionTag  : "loc2025",
+          sigmlBase      : "sigml",
+          avJARBase      : "avatars",
+          avJSONBase     : "avjson",
+          useAvatarJARs  : true,          // ← JARs present; avjson/ does NOT exist
+          animgenFPS     : 30,
+          avs            : ["anna", "marc", "francoise"],
+          avsfull        : [
+            "anna", "marc", "francoise",
+            "luna", "siggi",
+            "robotboy", "beatrice", "genie",
+            "otis", "darshan", "candy",
+            "max", "carmen"
+          ],
+          avSettings     : [{
+            width          : 384,
+            height         : 320,
+            avList         : "avsfull",
+            initAv         : "anna",
+            initCamera     : [0, 0.23, 3.24, 5, 18, 30, -1, -1],
+            initSpeed      : 0,
+            rateSpeed      : 5,
+            allowFrameSteps: true,
+            allowSiGMLText : true
+          }]
+        });
+
+      } catch (e) {
+        sendEventToApp({ status: "error", message: "CWASA init failed: " + e.message });
+      }
+    }
+
+    // Run after DOM is parsed (body already available at this script position,
+    // but guard against edge cases)
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initPlayer);
+    } else {
+      initPlayer();
+    }
+  </script>
+
+</body>
+</html>

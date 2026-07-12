@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<sigml>
+<hamgestural_sign gloss="red">
+  <sign_nonmanual>
+    <mouthing_tier>
+      <mouth_picture picture="rEd"/>
+    </mouthing_tier>
+  </sign_nonmanual>
+  <sign_manual>
+    <handconfig handshape="finger2" thumbpos="across"/>
+    <handconfig extfidir="u"/>
+    <handconfig palmor="l"/>
+    <location_bodyarm location="chin" contact="touch"/>
+    <directedmotion direction="d" size="small"/>
+  </sign_manual>
+</hamgestural_sign>
+</sigml>
