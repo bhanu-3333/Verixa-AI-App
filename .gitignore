@@ -1,40 +1,31 @@
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Dependencies
-node_modules/
-npm-debug.log
-npm-debug.log.*
-yarn-error.log
-yarn-error.log.*
-pnpm-debug.log
-pnpm-debug.log.*
-
 # Python
-venv/
-env/
-.venv/
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-*.egg-info/
-dist/
-*.egg
-.Python
-pip-log.txt
-pip-delete-this-directory.txt
-.pytest_cache/
-.mypy_cache/
-*.pyc
+.venv/
+venv/
+env/
 
-# Expo
+# Node
+node_modules/
 .expo/
 .expo-shared/
 dist/
 build/
+web-build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.*
+.env.local
+.env.*.local
 
 # IDE
 .vscode/
@@ -50,7 +41,14 @@ Thumbs.db
 .windows
 .watchmanconfig
 
+# Testing
+.coverage
+.pytest_cache/
+.mypy_cache/
+
 # React Native
+android/app/build/
+ios/build/
 local.properties
 *.jks
 *.p8
@@ -58,9 +56,10 @@ local.properties
 *.key
 *.mobileprovision
 *.orig.*
-web-build/
 
-# Misc
+# Temporary / Scratch / Local Tools
+scratch/
+scratch_cwasa/
 .cache/
 .parcel-cache
 *.pem

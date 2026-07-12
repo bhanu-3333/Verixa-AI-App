@@ -23,6 +23,8 @@ from app.utils.exceptions import (
     pymongo_exception_handler,
     global_exception_handler,
 )
+from fastapi.staticfiles import StaticFiles
+import os
 
 # ── Routers ────────────────────────────────────────────────────────────────────
 from app.routes.auth import router as auth_router
@@ -30,6 +32,7 @@ from app.routes.translator import router as translator_router
 from app.routes.hospital import router as hospital_router
 from app.routes.bank import router as bank_router
 from app.routes.emergency import router as emergency_router
+from app.routes.avatar import router as avatar_router
 
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
@@ -155,6 +158,12 @@ app.include_router(translator_router, prefix=API_V1)
 app.include_router(hospital_router,   prefix=API_V1)
 app.include_router(bank_router,       prefix=API_V1)
 app.include_router(emergency_router,  prefix=API_V1)
+app.include_router(avatar_router,     prefix=API_V1)
+
+# ── Static Files ──────────────────────────────────────────────────────────────
+current_dir = os.path.dirname(os.path.abspath(__file__))
+static_dir = os.path.join(current_dir, "static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
 # ── Health Endpoints ───────────────────────────────────────────────────────────
