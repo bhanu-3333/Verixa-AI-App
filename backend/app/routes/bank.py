@@ -7,8 +7,8 @@ GET  /api/v1/bank/history/{user_id}     — requires Bearer token
 """
 
 from fastapi import APIRouter, Depends
-from app.schemas.bank import BankServiceRequest, BankChatRequest
-from app.services.bank_service import create_bank_session, bank_chat, get_bank_history
+from app.schemas.bank import BankServiceRequest, BankChatRequest, BankCompleteRequest
+from app.services.bank_service import create_bank_session, bank_chat, get_bank_history, complete_bank_session
 from app.utils.response import success_response, created_response
 from app.utils.dependencies import get_current_user
 
@@ -39,6 +39,20 @@ async def bank_chat_endpoint(body: BankChatRequest):
         language=body.language,
     )
     return success_response("Message sent", result)
+
+
+@router.post("/complete", summary="Complete a bank session")
+async def bank_complete_endpoint(body: BankCompleteRequest):
+    result = await complete_bank_session(
+        user_id=body.user_id,
+        session_id=body.session_id,
+        service_type=body.service_type,
+        form_data=body.form_data,
+        chat_history=body.chat_history,
+        language=body.language
+    )
+    return success_response("Bank session completed and saved", result)
+
 
 
 @router.get("/history/{user_id}", summary="Get bank session history for a user")
