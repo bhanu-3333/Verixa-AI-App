@@ -1,0 +1,6 @@
+- [x] Install dependencies: `expo-camera`, `expo-speech`, `@mediapipe/hands`
+- [x] Create `SpeechService.ts` wrapper
+- [x] Create `SignToTextDetector.tsx` containing MediaPipe tracking and Canvas overlay
+- [x] Create `sign-to-text.tsx` screen rendering the detector and showing coords in React state
+- [x] Add navigation to `home.tsx`
+- [ ] Verify execution in Web browser
