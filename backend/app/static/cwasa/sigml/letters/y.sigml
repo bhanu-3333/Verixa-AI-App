@@ -7,7 +7,7 @@
     </mouthing_tier>
   </sign_nonmanual>
   <sign_manual>
-    <handconfig handshape="finger2spread" thumbpos="out"/>
+    <handconfig handshape="pinky" thumbpos="out"/>
     <handconfig extfidir="u"/>
     <handconfig palmor="l"/>
     <location_bodyarm location="chest" contact="close"/>
