@@ -13,13 +13,16 @@ import { router } from 'expo-router';
 import { registerUser } from '../../services/authService';
 
 export default function RegisterScreen() {
-  const [name,            setName]            = useState('');
-  const [email,           setEmail]           = useState('');
-  const [password,        setPassword]        = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [loading,         setLoading]         = useState(false);
-  const [error,           setError]           = useState('');
-  const [success,         setSuccess]         = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [emergencyName, setEmergencyName] = useState('');
+  const [emergencyPhone, setEmergencyPhone] = useState('');
+  const [emergencyRelation, setEmergencyRelation] = useState('');
 
   async function handleRegister() {
     setError('');
@@ -37,6 +40,15 @@ export default function RegisterScreen() {
       setError('Password must be at least 6 characters.');
       return;
     }
+    // Emergency contact validation
+    if (!emergencyName.trim() || !emergencyPhone.trim() || !emergencyRelation.trim()) {
+      setError('All fields are required.');
+      return;
+    }
+    if (!/^\d{10}$/.test(emergencyPhone.trim())) {
+      setError('Phone number must be exactly 10 digits.');
+      return;
+    }
     if (password !== confirmPassword) {
       setError('Passwords do not match.');
       return;
@@ -44,7 +56,14 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      await registerUser({ name: name.trim(), email: email.trim(), password });
+      await registerUser({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        emergency_contact_name: emergencyName.trim(),
+        emergency_contact_phone: emergencyPhone.trim(),
+        emergency_contact_relationship: emergencyRelation.trim(),
+      });
       setSuccess('Account created! Redirecting to login...');
       setTimeout(() => router.replace('/(auth)/login'), 1500);
     } catch (err: any) {
@@ -125,6 +144,41 @@ export default function RegisterScreen() {
           secureTextEntry
           value={confirmPassword}
           onChangeText={setConfirmPassword}
+          editable={!loading}
+        />
+
+        {/* Emergency Contact Name */}
+        <Text style={styles.label}>Emergency Contact Name</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Contact name"
+          placeholderTextColor="#aaa"
+          autoCapitalize="words"
+          value={emergencyName}
+          onChangeText={setEmergencyName}
+          editable={!loading}
+        />
+
+        {/* Emergency Contact Phone Number */}
+        <Text style={styles.label}>Emergency Contact Phone Number</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="10‑digit phone"
+          placeholderTextColor="#aaa"
+          keyboardType="phone-pad"
+          value={emergencyPhone}
+          onChangeText={setEmergencyPhone}
+          editable={!loading}
+        />
+
+        {/* Emergency Contact Relationship */}
+        <Text style={styles.label}>Relationship</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Relationship (e.g., brother)"
+          placeholderTextColor="#aaa"
+          value={emergencyRelation}
+          onChangeText={setEmergencyRelation}
           editable={!loading}
         />
 

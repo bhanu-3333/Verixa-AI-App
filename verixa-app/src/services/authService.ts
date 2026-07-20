@@ -42,6 +42,9 @@ export interface RegisterPayload {
   name: string;
   email: string;
   password: string;
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
+  emergency_contact_relationship: string;
 }
 
 export interface LoginPayload {

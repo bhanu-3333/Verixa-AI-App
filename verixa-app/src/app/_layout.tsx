@@ -11,6 +11,7 @@ import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import { LanguageProvider } from '../components/LanguageProvider';
 
 // Keep the native splash visible until we're ready
 SplashScreen.preventAutoHideAsync();
@@ -24,11 +25,13 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index"  options={{ animation: 'none' }} />
-        <Stack.Screen name="(auth)" options={{ animation: 'none' }} />
-        <Stack.Screen name="(app)"  options={{ animation: 'fade' }} />
-      </Stack>
+      <LanguageProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index"  options={{ animation: 'none' }} />
+          <Stack.Screen name="(auth)" options={{ animation: 'none' }} />
+          <Stack.Screen name="(app)"  options={{ animation: 'fade' }} />
+        </Stack>
+      </LanguageProvider>
     </>
   );
 }

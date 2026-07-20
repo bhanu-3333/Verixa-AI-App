@@ -7,6 +7,9 @@ import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Platform } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { getToken } from '../../utils/storage';
+// Language support — provider kept for multilingual infrastructure
+import { LanguageProvider } from '../../components/LanguageProvider';
+import { SharedHeader } from '../../components/SharedHeader';
 
 export default function AppLayout() {
   const [ready, setReady] = useState(false);
@@ -35,5 +38,13 @@ export default function AppLayout() {
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  // Wrap navigation stack with LanguageProvider for multilingual support
+  return (
+    <LanguageProvider>
+      <View style={{ flex: 1 }}>
+        <SharedHeader />
+        <Stack screenOptions={{ headerShown: false }} />
+      </View>
+    </LanguageProvider>
+  );
 }

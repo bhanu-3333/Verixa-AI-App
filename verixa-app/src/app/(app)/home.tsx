@@ -114,10 +114,68 @@ export default function HomeScreen() {
         <Text style={styles.featureArrow}>›</Text>
       </TouchableOpacity>
 
+      {/* Sign to Text Feature */}
+      <TouchableOpacity
+        style={styles.featureCard}
+        onPress={() => router.push('/sign-to-text' as any)}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.featureIcon}>📷</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.featureTitle}>Sign to Text</Text>
+          <Text style={styles.featureDesc}>Translate hand signs into text in real time</Text>
+        </View>
+        <Text style={styles.featureArrow}>›</Text>
+      </TouchableOpacity>
+
+      {/* Emergency SOS Feature */}
+      <TouchableOpacity
+        style={styles.featureCard}
+        onPress={() => router.push('/emergency')}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.featureIcon}>🚨</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.featureTitle}>Emergency SOS</Text>
+          <Text style={styles.featureDesc}>Send instant emergency alert and location</Text>
+        </View>
+        <Text style={styles.featureArrow}>›</Text>
+      </TouchableOpacity>
+
+      {/* Hospital Mode Feature */}
+      <TouchableOpacity
+        style={styles.featureCard}
+        onPress={() => router.push('/hospital')}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.featureIcon}>🏥</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.featureTitle}>Hospital Mode</Text>
+          <Text style={styles.featureDesc}>Log symptoms, map pain locations, and speak to doctors</Text>
+        </View>
+        <Text style={styles.featureArrow}>›</Text>
+      </TouchableOpacity>
+
+      {/* Bank Mode Feature */}
+      <TouchableOpacity
+        style={styles.featureCard}
+        onPress={() => router.push('/bank')}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.featureIcon}>🏦</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.featureTitle}>Bank Mode</Text>
+          <Text style={styles.featureDesc}>Access banking services with AI-powered communication</Text>
+        </View>
+        <Text style={styles.featureArrow}>›</Text>
+      </TouchableOpacity>
+
+
       {/* Logout */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
         <Text style={styles.logoutText}>Logout</Text>
       </TouchableOpacity>
+
 
     </ScrollView>
   );
