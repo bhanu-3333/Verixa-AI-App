@@ -37,7 +37,14 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
     },
 )
 async def register(body: RegisterRequest):
-    result = await create_user(body.name, body.email, body.password)
+    result = await create_user(
+        name=body.name,
+        email=body.email,
+        password=body.password,
+        emergency_contact_name=body.emergency_contact_name,
+        emergency_contact_phone=body.emergency_contact_phone,
+        emergency_contact_relationship=body.emergency_contact_relationship,
+    )
     if "error" in result:
         return error_response(result["error"], status_code=400)
     return created_response("User registered successfully", {"user": result})
