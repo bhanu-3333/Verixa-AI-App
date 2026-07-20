@@ -10,7 +10,13 @@
 
   "animgenFPS"      : 30,
 
-  "avs" : ["anna", "marc", "francoise"],
+  "avs" : [
+    "anna", "marc", "francoise",
+    "luna", "siggi",
+    "robotboy", "beatrice", "genie",
+    "otis", "darshan", "candy",
+    "max", "carmen"
+  ],
 
   "avsfull" : [
     "anna", "marc", "francoise",
