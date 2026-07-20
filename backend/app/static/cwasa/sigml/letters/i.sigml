@@ -7,9 +7,9 @@
     </mouthing_tier>
   </sign_nonmanual>
   <sign_manual>
-    <handconfig handshape="pinky" thumbpos="out"/>
+    <handconfig handshape="pinky" thumbpos="across"/>
     <handconfig extfidir="u"/>
-    <handconfig palmor="l"/>
+    <handconfig palmor="d"/>
     <location_bodyarm location="chest" contact="close"/>
   </sign_manual>
 </hamgestural_sign>
