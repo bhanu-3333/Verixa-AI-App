@@ -33,17 +33,33 @@ class Settings:
     ALGORITHM: str       = os.getenv("ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
+    # ── WhatsApp Business Cloud API Settings ──────────────────────────────────
+    WHATSAPP_ACCESS_TOKEN: Optional[str] = os.getenv("WHATSAPP_ACCESS_TOKEN") or None
+    WHATSAPP_PHONE_NUMBER_ID: Optional[str] = os.getenv("WHATSAPP_PHONE_NUMBER_ID") or None
+    WHATSAPP_BUSINESS_ACCOUNT_ID: Optional[str] = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID") or None
+    WHATSAPP_TEMPLATE_NAME: str = os.getenv("WHATSAPP_TEMPLATE_NAME", "emergency_alert")
+
     # ── AI Engine (Phase 4) ───────────────────────────────────────────────────
     AI_ENGINE_URL: Optional[str] = os.getenv("AI_ENGINE_URL") or None
 
     # ── CORS (React Native / Expo) ────────────────────────────────────────────
-    CORS_ORIGINS: list = ["*"]   # Lock down to specific origins in production
+    CORS_ORIGINS: list = [
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
+        "http://localhost:19006",
+        "http://127.0.0.1:19006",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
     # ── MongoDB Collection Names ──────────────────────────────────────────────
     COL_USERS              = "users"
     COL_TRANSLATIONS       = "translations"
     COL_HOSPITAL_HISTORY   = "hospital_history"
     COL_BANK_HISTORY       = "bank_history"
+    COL_EMERGENCY_ALERTS   = "emergency_alerts"
     COL_EMERGENCY_CONTACTS = "emergency_contacts"
     COL_CHAT_HISTORY       = "chat_history"
     COL_APP_SETTINGS       = "app_settings"
