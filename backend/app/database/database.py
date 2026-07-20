@@ -83,6 +83,7 @@ class Database:
             settings.COL_EMERGENCY_CONTACTS,
             settings.COL_CHAT_HISTORY,
             settings.COL_APP_SETTINGS,
+            settings.COL_EMERGENCY_ALERTS,
         ]
         existing = await self.db.list_collection_names()
         for name in required:
@@ -111,6 +112,8 @@ class Database:
     def bank_history(self)       -> AsyncIOMotorCollection: return self._col(settings.COL_BANK_HISTORY)
     @property
     def emergency_contacts(self) -> AsyncIOMotorCollection: return self._col(settings.COL_EMERGENCY_CONTACTS)
+    @property
+    def emergency_alerts(self)   -> AsyncIOMotorCollection: return self._col(settings.COL_EMERGENCY_ALERTS)
     @property
     def chat_history(self)       -> AsyncIOMotorCollection: return self._col(settings.COL_CHAT_HISTORY)
     @property
