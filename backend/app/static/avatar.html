@@ -137,11 +137,22 @@
 
     function setAvatar(avatarName) {
       try {
+        if (!avatarName || avatarName === "null" || avatarName === "undefined") {
+          console.warn("setAvatar aborted: invalid avatarName:", avatarName);
+          return;
+        }
         var name = avatarName.toLowerCase();
         var selectEl = document.querySelector(".menuAv.av0");
         if (selectEl) {
-          selectEl.value = name;
-          selectEl.dispatchEvent(new Event("change"));
+          var hasOption = Array.from(selectEl.options).some(function(opt) {
+            return opt.value === name;
+          });
+          if (hasOption) {
+            selectEl.value = name;
+            selectEl.dispatchEvent(new Event("change"));
+          } else {
+            console.warn("setAvatar aborted: option not found for", name);
+          }
         }
       } catch (e) {
         sendEventToApp({ status: "error", message: "setAvatar failed: " + e.message });
@@ -237,7 +248,13 @@
           avJSONBase     : "avjson",
           useAvatarJARs  : true,          // ← JARs present; avjson/ does NOT exist
           animgenFPS     : 30,
-          avs            : ["anna", "marc", "francoise"],
+          avs            : [
+            "anna", "marc", "francoise",
+            "luna", "siggi",
+            "robotboy", "beatrice", "genie",
+            "otis", "darshan", "candy",
+            "max", "carmen"
+          ],
           avsfull        : [
             "anna", "marc", "francoise",
             "luna", "siggi",
