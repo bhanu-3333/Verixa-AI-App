@@ -25,3 +25,12 @@ class BankHistoryResponse(BaseModel):
     message:  str
     count:    int        = 0
     history:  List[dict] = []
+
+class BankCompleteRequest(BaseModel):
+    user_id:      str
+    session_id:   str
+    service_type: str
+    form_data:    dict
+    chat_history: List[dict]
+    language:     str
+
