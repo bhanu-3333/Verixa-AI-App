@@ -46,12 +46,13 @@ async def lifespan(app: FastAPI):
 
     try:
         await db.connect()
-        app_logger.info("MongoDB connection established ✓")
+        app_logger.info("MongoDB connection established [OK]")
     except Exception as exc:
-        app_logger.error(f"MongoDB UNAVAILABLE: {exc}")
-        app_logger.warning("Server starting without database — endpoints will fail until DB is reachable.")
+        app_logger.error(f"FATAL - MongoDB UNAVAILABLE at startup: {exc}")
+        app_logger.error("Fix MONGO_URI in .env and restart the server.")
+        raise   # <-- crash fast; don't serve requests with no DB
 
-    app_logger.info(f"{settings.APP_NAME} ready → http://{settings.HOST}:{settings.PORT}/docs")
+    app_logger.info(f"{settings.APP_NAME} ready -> http://{settings.HOST}:{settings.PORT}/docs")
 
     yield   # ← app runs here
 
