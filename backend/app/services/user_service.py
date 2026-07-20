@@ -23,13 +23,16 @@ def _public(user: dict) -> dict:
         "email":              user.get("email"),
         "preferred_language": user.get("preferred_language", "en"),
         "is_active":          user.get("is_active", True),
+        "emergency_contact_name":         user.get("emergency_contact_name", ""),
+        "emergency_contact_phone":        user.get("emergency_contact_phone", ""),
+        "emergency_contact_relationship": user.get("emergency_contact_relationship", ""),
         "created_at":         user.get("created_at"),
     }
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-async def create_user(name: str, email: str, password: str) -> dict:
+async def create_user(name: str, email: str, password: str, emergency_contact_name: str, emergency_contact_phone: str, emergency_contact_relationship: str) -> dict:
     """
     Register a new user.
     - Checks for duplicate email.
@@ -44,6 +47,9 @@ async def create_user(name: str, email: str, password: str) -> dict:
         name=name,
         email=email,
         hashed_password=hash_password(password),   # ← bcrypt
+        emergency_contact_name=emergency_contact_name,
+        emergency_contact_phone=emergency_contact_phone,
+        emergency_contact_relationship=emergency_contact_relationship,
     )
     result = await db.users.insert_one(doc.model_dump())
     app_logger.info(f"User registered: {result.inserted_id}")
