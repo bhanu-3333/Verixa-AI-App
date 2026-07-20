@@ -10,7 +10,7 @@ class SymptomRequest(BaseModel):
     department:     Optional[str]   = Field(None, examples=["Cardiology"])
     symptom:        str             = Field(..., examples=["chest pain"])
     pain_location:  Optional[str]   = Field(None, examples=["left chest"])
-    pain_intensity: Optional[int]   = Field(None, ge=1, le=10, examples=[7])
+    pain_intensity: Optional[int]   = Field(None, ge=0, le=10, examples=[7])
     language:       str             = "en"
 
 class HospitalChatRequest(BaseModel):
