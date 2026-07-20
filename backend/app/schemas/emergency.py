@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 
 
+# ── Legacy schemas (backward compatibility with /sos endpoint) ────────────────
+
 class SOSRequest(BaseModel):
     user_id:        str
     emergency_type: str            = Field(..., examples=["medical"])   # medical | fire | police
@@ -34,3 +36,36 @@ class SOSResponse(BaseModel):
     session_id:     Optional[str] = None
     emergency_type: Optional[str] = None
     location:       Optional[dict] = None
+
+
+# ── New schemas (Phase 3 — /send, /history endpoints) ─────────────────────────
+
+class SendSOSRequest(BaseModel):
+    """Body for POST /api/v1/emergency/send.
+    user_id is NOT accepted here — it is extracted from the JWT.
+    """
+    latitude:       float          = Field(..., examples=[17.3850])
+    longitude:      float          = Field(..., examples=[78.4867])
+    maps_link:      str            = Field(..., examples=["https://maps.google.com/?q=17.3850,78.4867"])
+    emergency_type: str            = Field(..., examples=["Medical"])  # Medical | Police | Fire | General
+
+
+class SendSOSResponse(BaseModel):
+    """Response envelope for POST /api/v1/emergency/send."""
+    success:    bool
+    message:    str
+    alert_id:   str
+    status:     str   # pending | sent | failed
+
+
+class AlertHistoryItem(BaseModel):
+    """Single alert in the history list."""
+    id:             str
+    user_id:        str
+    latitude:       float
+    longitude:      float
+    maps_link:      str
+    emergency_type: str
+    status:         str
+    sms_status:     str
+    created_at:     str   # ISO-8601
