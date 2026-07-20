@@ -15,6 +15,7 @@ class BankDocument(BaseModel):
     chat_messages: List[dict]     = []
     language:      str            = "en"
     status:        str            = "open"
+    form_data:     Optional[dict] = None
     created_at:    datetime       = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at:    datetime       = Field(default_factory=lambda: datetime.now(timezone.utc))
 
