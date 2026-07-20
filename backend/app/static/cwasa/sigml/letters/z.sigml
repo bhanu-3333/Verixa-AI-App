@@ -7,10 +7,13 @@
     </mouthing_tier>
   </sign_nonmanual>
   <sign_manual>
-    <handconfig handshape="finger2" thumbpos="out"/>
+    <handconfig handshape="finger2" thumbpos="across"/>
     <handconfig extfidir="u"/>
     <handconfig palmor="l"/>
     <location_bodyarm location="chest" contact="close"/>
+    <directedmotion direction="r" size="small"/>
+    <directedmotion direction="dl"/>
+    <directedmotion direction="r" size="small"/>
   </sign_manual>
 </hamgestural_sign>
 </sigml>
