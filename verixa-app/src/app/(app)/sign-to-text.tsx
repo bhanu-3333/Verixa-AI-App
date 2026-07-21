@@ -1,16 +1,9 @@
 /**
  * Verixa AI — Sign Language to Text Screen
- * Milestone 2: Gesture Recognition + Speech Output
- * Phase 2: Alphabet Recognition (A–Z subset)
- *
- * Data flow (Phrase mode):
- *   MediaPipe detector → 21 landmarks → GestureRecognizer → word → sentence
- *
- * Data flow (Alphabet mode):
- *   MediaPipe detector → 21 landmarks → AlphabetRecognizer → letter → currentWord → wordHistory
+ * Custom dynamic sequence recognition system for 10 predefined phrases
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,30 +12,48 @@ import {
   SafeAreaView,
   ScrollView,
   useWindowDimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import SignToTextDetector from '../../components/SignToTextDetector';
 import { recognizeAlphabet, getWordSuggestion } from '../../services/AlphabetRecognizer';
-import { recognizeGesture, getSupportedGestures, type GestureResult } from '../../services/GestureRecognizer';
+import { SignService, FrameHands, PredictResponse } from '../../services/SignService';
 import SpeechService from '../../services/SpeechService';
+import { t } from '../../services/LanguageService';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/** How long (ms) a gesture must be held continuously before it fires */
 const HOLD_DURATION_MS = 800;
-
-/** Minimum confidence to accept an alphabet letter */
 const ALPHABET_CONFIDENCE_THRESHOLD = 0.70;
-
-/** Maximum word history entries */
 const MAX_WORD_HISTORY = 20;
 
-// ---------------------------------------------------------------------------
-// Screen
-// ---------------------------------------------------------------------------
+// Dynamic Sequence Recognition Constants
+const SEQUENCE_LENGTH = 30;
+const CONFIDENCE_THRESHOLD = 0.80;
+const COOLDOWN_DURATION_MS = 2000;
+const INFERENCE_INTERVAL_MS = 450; // run sliding window inference every 450ms
+
+const PHRASES = [
+  "CAN I CALL SOMEONE",
+  "MY NAME IS",
+  "I HAVE LOST MY PURSE",
+  "CAN YOU HELP ME",
+  "CAN YOU REPEAT WHAT YOU SAID",
+  "WHERE IS THIS ADDRESS",
+  "CAN YOU CONVEY THIS TO SOMEONE",
+  "CAN I GET YOUR NUMBER",
+  "WHO ARE YOU",
+  "HOW CAN I HELP YOU"
+];
+
+// Helper to convert phrase to localization key
+const getLocKey = (phrase: string): string => {
+  const clean = phrase.toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_');
+  return `phrase_${clean}`;
+};
 
 export default function SignToTextScreen() {
   const { width: screenWidth } = useWindowDimensions();
@@ -52,11 +63,13 @@ export default function SignToTextScreen() {
   const [detected, setDetected] = useState(false);
   const [mode, setMode] = useState<'phrase' | 'alphabet'>('phrase');
 
-  // ── Phrase mode state ──
-  const [currentGesture, setCurrentGesture] = useState<GestureResult | null>(null);
-  const [confirmedWord, setConfirmedWord] = useState<string | null>(null);
+  // ── Phrase mode state (Sequence LSTM-based) ──
+  const [isPredicting, setIsPredicting] = useState(false);
+  const [lastPrediction, setLastPrediction] = useState<PredictResponse | null>(null);
+  const [predictionMessage, setPredictionMessage] = useState<string>('');
   const [sentence, setSentence] = useState<string[]>([]);
   const [transcript, setTranscript] = useState<string[]>([]);
+  const [autoSpeak, setAutoSpeak] = useState(true);
 
   // ── Alphabet mode state ──
   const [currentLetter, setCurrentLetter] = useState<string | null>(null);
@@ -65,14 +78,28 @@ export default function SignToTextScreen() {
   const [wordHistory, setWordHistory] = useState<string[]>([]);
   const suggestion = getWordSuggestion(currentWord);
 
-  // ── Refs for hold-timer and duplicate prevention ──
+  // ── Queue & Timing Refs ──
+  const landmarkQueueRef = useRef<FrameHands[]>([]);
+  const isPredictingRef = useRef(false);
+  const lastInferenceTimeRef = useRef<number>(0);
+  const recentPredictionsRef = useRef<string[]>([]);
+  const cooldownRef = useRef(false);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCandidateRef = useRef<string | null>(null);
   const lastConfirmedRef = useRef<string | null>(null);
 
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
+  // Clear states when mode changes
+  useEffect(() => {
+    landmarkQueueRef.current = [];
+    isPredictingRef.current = false;
+    recentPredictionsRef.current = [];
+    cooldownRef.current = false;
+    setLastPrediction(null);
+    setPredictionMessage('');
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    lastCandidateRef.current = null;
+    lastConfirmedRef.current = null;
+  }, [mode]);
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -82,44 +109,103 @@ export default function SignToTextScreen() {
     }
   };
 
+  // ── Dynamic Sign Predictor Trigger ──
+  const runSequenceInference = async (isManual = false) => {
+    if (isPredictingRef.current) return;
+    if (cooldownRef.current) return;
+    
+    const frames = landmarkQueueRef.current;
+    if (frames.length < 5) {
+      if (isManual) setPredictionMessage(t('phrase_show_sign'));
+      return;
+    }
+
+    try {
+      isPredictingRef.current = true;
+      setIsPredicting(true);
+      setPredictionMessage('');
+
+      const res = await SignService.predictPhrase(frames);
+      setLastPrediction(res);
+
+      if (res.accepted && res.phrase) {
+        // Validation & Smoothing logic (Same class predicted in 2 consecutive windows)
+        const recent = recentPredictionsRef.current;
+        recent.push(res.phrase);
+        if (recent.length > 3) recent.shift();
+
+        const isStable = recent.length >= 2 && recent.every(p => p === res.phrase);
+
+        if (isStable || isManual) {
+          const phraseText = t(getLocKey(res.phrase));
+          setSentence((prev) => [...prev, phraseText]);
+          setTranscript((prev) => [phraseText, ...prev].slice(0, 30));
+
+          if (autoSpeak) {
+            SpeechService.speak(phraseText);
+          }
+
+          // Trigger cooldown
+          cooldownRef.current = true;
+          setPredictionMessage('Phrase committed!');
+          setTimeout(() => {
+            cooldownRef.current = false;
+            setPredictionMessage('');
+          }, COOLDOWN_DURATION_MS);
+
+          // Clear history and queue
+          recentPredictionsRef.current = [];
+          landmarkQueueRef.current = [];
+        } else {
+          setPredictionMessage('Stabilizing gesture...');
+        }
+      } else {
+        recentPredictionsRef.current = [];
+        setPredictionMessage(t('phrase_not_recognized'));
+      }
+    } catch (err: any) {
+      console.warn('[SignToText] Prediction API failed:', err);
+      setPredictionMessage('Prediction server offline');
+    } finally {
+      isPredictingRef.current = false;
+      setIsPredicting(false);
+    }
+  };
+
   // ---------------------------------------------------------------------------
   // Camera callbacks
   // ---------------------------------------------------------------------------
 
-  const handleHandDetected = useCallback((landmarks: any[]) => {
+  const handleHandsDetected = useCallback((hands: { leftHand: any[] | null; rightHand: any[] | null }) => {
     setDetected(true);
 
     if (mode === 'phrase') {
-      // ── Phrase mode: use GestureRecognizer ──
-      const result = recognizeGesture(landmarks);
-      setCurrentGesture(result);
-      const candidate = result.word;
+      // Accumulate sequence window
+      const frame: FrameHands = {
+        leftHand: hands.leftHand ? hands.leftHand.map(l => ({ x: l.x, y: l.y, z: l.z })) : null,
+        rightHand: hands.rightHand ? hands.rightHand.map(l => ({ x: l.x, y: l.y, z: l.z })) : null,
+      };
 
-      if (candidate) {
-        if (candidate !== lastCandidateRef.current) {
-          if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-          lastCandidateRef.current = candidate;
-
-          if (candidate !== lastConfirmedRef.current) {
-            holdTimerRef.current = setTimeout(() => {
-              setConfirmedWord(candidate);
-              setSentence((prev) => [...prev, candidate]);
-              setTranscript((prev) => [candidate, ...prev].slice(0, 30));
-              lastConfirmedRef.current = candidate;
-            }, HOLD_DURATION_MS);
-          }
-        }
-      } else {
-        if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-        lastCandidateRef.current = null;
-        lastConfirmedRef.current = null;
+      landmarkQueueRef.current.push(frame);
+      if (landmarkQueueRef.current.length > SEQUENCE_LENGTH) {
+        landmarkQueueRef.current.shift();
       }
-    } else {
-      // ── Alphabet mode: use AlphabetRecognizer ──
+
+      // Throttled Sliding Window Prediction
+      const now = Date.now();
+      if (landmarkQueueRef.current.length >= SEQUENCE_LENGTH && (now - lastInferenceTimeRef.current >= INFERENCE_INTERVAL_MS)) {
+        lastInferenceTimeRef.current = now;
+        runSequenceInference(false);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, autoSpeak]);
+
+  const handleHandDetectedLegacy = useCallback((landmarks: any[]) => {
+    if (mode === 'alphabet') {
       const { letter, confidence } = recognizeAlphabet(landmarks);
       setCurrentLetter(letter);
       setCurrentLetterConfidence(confidence);
-      setCurrentGesture(null);
 
       const candidate = confidence >= ALPHABET_CONFIDENCE_THRESHOLD ? letter : null;
 
@@ -138,7 +224,6 @@ export default function SignToTextScreen() {
       } else {
         if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
         lastCandidateRef.current = null;
-        // Do NOT reset lastConfirmedRef.current when confidence drops while hand is still visible
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -146,22 +231,20 @@ export default function SignToTextScreen() {
 
   const handleHandNotDetected = useCallback(() => {
     setDetected(false);
-    setCurrentGesture(null);
     setCurrentLetter(null);
     setCurrentLetterConfidence(0);
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     lastCandidateRef.current = null;
     lastConfirmedRef.current = null;
-  }, []);
 
-  // ---------------------------------------------------------------------------
-  // Phrase mode controls
-  // ---------------------------------------------------------------------------
+    if (mode === 'phrase') {
+      // Gracefully clear/decay the sliding window queue when hands leave camera range
+      landmarkQueueRef.current = [];
+      recentPredictionsRef.current = [];
+    }
+  }, [mode]);
 
   const clearTranscriptOnly = () => setTranscript([]);
-
-  const supportedGestures = getSupportedGestures();
-  const confidencePct = currentGesture ? Math.round(currentGesture.confidence * 100) : 0;
 
   // ---------------------------------------------------------------------------
   // Alphabet mode controls
@@ -188,10 +271,6 @@ export default function SignToTextScreen() {
 
   const alphabetSpace = () => setCurrentWord((prev) => prev + ' ');
 
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -199,11 +278,11 @@ export default function SignToTextScreen() {
         {/* ── Header ── */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/')}>
-            <Text style={styles.backButtonText}>‹ Back</Text>
+            <Text style={styles.backButtonText}>‹ {t('emergency_back')}</Text>
           </TouchableOpacity>
           <View style={styles.headerTitles}>
-            <Text style={styles.headerTitle}>Sign to Text</Text>
-            <Text style={styles.headerSub}>Milestone 2 — Gesture Recognition & Sentence Builder</Text>
+            <Text style={styles.headerTitle}>{t('emergency_title')}</Text>
+            <Text style={styles.headerSub}>Dynamic Sequence Neural-Network Sign to Text</Text>
           </View>
         </View>
 
@@ -214,7 +293,7 @@ export default function SignToTextScreen() {
             onPress={() => setMode('phrase')}
           >
             <Text style={[styles.toggleButtonText, mode === 'phrase' && styles.toggleButtonTextActive]}>
-              Phrase
+              Phrase Mode (Neural-Net)
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -222,7 +301,7 @@ export default function SignToTextScreen() {
             onPress={() => setMode('alphabet')}
           >
             <Text style={[styles.toggleButtonText, mode === 'alphabet' && styles.toggleButtonTextActive]}>
-              Alphabet
+              Alphabet Mode
             </Text>
           </TouchableOpacity>
         </View>
@@ -234,28 +313,39 @@ export default function SignToTextScreen() {
           <View style={[styles.leftColumn, isMobile ? styles.leftColumnMobile : styles.leftColumnDesktop]}>
             <View style={styles.cameraPanel}>
               <SignToTextDetector
-                onHandDetected={handleHandDetected}
+                onHandsDetected={handleHandsDetected}
+                onHandDetected={handleHandDetectedLegacy}
                 onHandNotDetected={handleHandNotDetected}
               />
 
-              {/* Overlay: Phrase mode — gesture name */}
-              {mode === 'phrase' && detected && currentGesture?.word && (
+              {/* Overlay: Phrase mode results */}
+              {mode === 'phrase' && detected && (
                 <View style={styles.gestureOverlay}>
-                  <Text style={styles.gestureOverlayWord}>{currentGesture.word}</Text>
-                  <View style={styles.confidenceBar}>
-                    <View
-                      style={[
-                        styles.confidenceFill,
-                        { width: `${confidencePct}%` as any },
-                        confidencePct >= 80 ? styles.confHigh : confidencePct >= 70 ? styles.confMid : styles.confLow,
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.confidenceLabel}>{confidencePct}% confidence</Text>
+                  {isPredicting ? (
+                    <ActivityIndicator size="small" color="#00FFCC" />
+                  ) : (
+                    <Text style={styles.gestureOverlayWord}>
+                      {lastPrediction?.phrase ? t(getLocKey(lastPrediction.phrase)) : t('phrase_show_sign')}
+                    </Text>
+                  )}
+                  {lastPrediction && (
+                    <View style={styles.confidenceBar}>
+                      <View
+                        style={[
+                          styles.confidenceFill,
+                          { width: `${Math.round(lastPrediction.confidence * 100)}%` as any },
+                          lastPrediction.accepted ? styles.confHigh : styles.confLow,
+                        ]}
+                      />
+                    </View>
+                  )}
+                  <Text style={styles.confidenceLabel}>
+                    {lastPrediction ? `${Math.round(lastPrediction.confidence * 100)}% confidence` : predictionMessage || 'Tracking hands...'}
+                  </Text>
                 </View>
               )}
 
-              {/* Overlay: Alphabet mode — letter */}
+              {/* Overlay: Alphabet mode letter */}
               {mode === 'alphabet' && detected && currentLetter && (
                 <View style={styles.gestureOverlay}>
                   <Text style={styles.gestureOverlayWord}>{currentLetter}</Text>
@@ -270,13 +360,12 @@ export default function SignToTextScreen() {
                   </View>
                   <Text style={styles.confidenceLabel}>
                     {Math.round(currentLetterConfidence * 100)}% confidence
-                    {currentLetterConfidence < ALPHABET_CONFIDENCE_THRESHOLD ? ' (too low)' : ''}
                   </Text>
                 </View>
               )}
             </View>
 
-            {/* Live Transcript History (Below Camera) — Phrase mode only */}
+            {/* Live Transcript History (Below Camera) */}
             {mode === 'phrase' && (
               <View style={styles.transcriptBox}>
                 <View style={styles.transcriptHeader}>
@@ -308,7 +397,7 @@ export default function SignToTextScreen() {
               </View>
             )}
 
-            {/* Word History — Alphabet mode only */}
+            {/* Word History — Alphabet mode */}
             {mode === 'alphabet' && (
               <View style={styles.transcriptBox}>
                 <View style={styles.transcriptHeader}>
@@ -341,15 +430,13 @@ export default function SignToTextScreen() {
             )}
           </View>
 
-          {/* ── Right Column: Recognition State & Mode UI ── */}
+          {/* ── Right Column: Controls & Mode UI ── */}
           <View style={[styles.dataPanel, isMobile ? styles.dataPanelMobile : styles.dataPanelDesktop]}>
-
-            {/* Status badge */}
             <View style={styles.panelHeader}>
               <Text style={styles.panelTitle}>Recognition State</Text>
               <View style={[styles.statusBadge, detected ? styles.badgeActive : styles.badgeInactive]}>
                 <Text style={styles.statusBadgeText}>
-                  {detected ? 'HAND DETECTED' : 'NO HAND'}
+                  {detected ? 'TRACKING ACTIVE' : 'NO HANDS'}
                 </Text>
               </View>
             </View>
@@ -357,49 +444,46 @@ export default function SignToTextScreen() {
             {/* ── PHRASE MODE UI ── */}
             {mode === 'phrase' && (
               <>
-                {/* Last confirmed word card */}
                 <View style={styles.wordCard}>
-                  {confirmedWord ? (
+                  {lastPrediction?.phrase ? (
                     <>
-                      <Text style={styles.wordCardLabel}>Last recognized word</Text>
-                      <Text style={styles.wordCardWord}>{confirmedWord}</Text>
+                      <Text style={styles.wordCardLabel}>Last prediction</Text>
+                      <Text style={styles.wordCardWord}>{t(getLocKey(lastPrediction.phrase))}</Text>
                     </>
                   ) : (
                     <Text style={styles.wordCardPlaceholder}>
-                      Hold a sign gesture for {HOLD_DURATION_MS / 1000}s to recognize it
+                      Show your hands and perform the gesture sequence for {SEQUENCE_LENGTH} frames
                     </Text>
                   )}
                 </View>
 
-                {/* Live recognizer state */}
-                {detected && (
-                  <View style={styles.liveState}>
-                    <Text style={styles.liveStateLabel}>Live state</Text>
-                    <Text style={styles.liveStateValue}>
-                      {currentGesture?.word
-                        ? `Candidate: "${currentGesture.word}" (${confidencePct}%)`
-                        : 'Gesture not recognized'}
-                    </Text>
-                  </View>
-                )}
-
                 {/* Sentence Builder Section */}
                 <View style={styles.sentenceSection}>
-                  <Text style={styles.sectionTitle}>Sentence Builder</Text>
+                  <Text style={styles.sectionTitle}>Committed Phrases</Text>
                   <View style={styles.sentenceBox}>
                     <Text style={sentence.length > 0 ? styles.sentenceText : styles.sentencePlaceholder}>
-                      {sentence.length > 0 ? sentence.join(' ') : 'Your sentence will appear here...'}
+                      {sentence.length > 0 ? sentence.join(' ') : 'Committed gestures will construct a sentence...'}
                     </Text>
                   </View>
 
-                  {/* Controls Row */}
+                  {/* Auto Speak Toggle Option */}
+                  <TouchableOpacity
+                    style={[styles.toggleAutoSpeakBtn, autoSpeak && styles.toggleAutoSpeakBtnActive]}
+                    onPress={() => setAutoSpeak(!autoSpeak)}
+                  >
+                    <Text style={[styles.toggleAutoSpeakBtnText, autoSpeak && styles.toggleAutoSpeakBtnTextActive]}>
+                      {autoSpeak ? '🔊 Auto Speak: ENABLED' : '🔈 Auto Speak: DISABLED'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Controls Grid */}
                   <View style={styles.controlsGrid}>
                     <TouchableOpacity
                       style={[styles.controlButton, styles.speakAllBtn]}
                       onPress={() => sentence.length > 0 && SpeechService.speak(sentence.join(' '))}
                       disabled={sentence.length === 0}
                     >
-                      <Text style={styles.controlButtonText}>🔊 Speak Sentence</Text>
+                      <Text style={styles.controlButtonText}>🔊 Speak All</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -407,7 +491,7 @@ export default function SignToTextScreen() {
                       onPress={() => sentence.length > 0 && copyToClipboard(sentence.join(' '))}
                       disabled={sentence.length === 0}
                     >
-                      <Text style={styles.controlButtonText}>📋 Copy Sentence</Text>
+                      <Text style={styles.controlButtonText}>📋 Copy Text</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -420,26 +504,46 @@ export default function SignToTextScreen() {
 
                     <TouchableOpacity
                       style={[styles.controlButton, styles.clearBtnColor]}
-                      onPress={() => { setSentence([]); setConfirmedWord(null); }}
+                      onPress={() => { setSentence([]); setLastPrediction(null); }}
                       disabled={sentence.length === 0}
                     >
-                      <Text style={styles.controlButtonText}>🗑️ Clear Sentence</Text>
+                      <Text style={styles.controlButtonText}>🗑️ Clear All</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.controlButton, styles.manualRecognizeBtn]}
+                      onPress={() => runSequenceInference(true)}
+                      disabled={isPredicting}
+                    >
+                      <Text style={styles.controlButtonText}>⚡ Recognize Now</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.controlButton, styles.tryAgainBtn]}
+                      onPress={() => {
+                        landmarkQueueRef.current = [];
+                        recentPredictionsRef.current = [];
+                        setLastPrediction(null);
+                        setPredictionMessage('Queue reset. Show your sign again.');
+                      }}
+                    >
+                      <Text style={styles.controlButtonText}>🔄 Reset Queue</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
 
-                {/* Supported gestures legend */}
+                {/* Legend list of 10 Phrases */}
                 <View style={styles.legend}>
-                  <Text style={styles.legendTitle}>Supported gestures ({supportedGestures.length})</Text>
+                  <Text style={styles.legendTitle}>Predefined phrase vocabulary (10)</Text>
                   <ScrollView
                     horizontal={false}
                     contentContainerStyle={styles.legendGrid}
                     showsVerticalScrollIndicator={true}
                     style={styles.legendScroll}
                   >
-                    {supportedGestures.map((g) => (
-                      <View key={g} style={styles.legendChip}>
-                        <Text style={styles.legendChipText}>{g}</Text>
+                    {PHRASES.map((phrase) => (
+                      <View key={phrase} style={styles.legendChip}>
+                        <Text style={styles.legendChipText}>{t(getLocKey(phrase))}</Text>
                       </View>
                     ))}
                   </ScrollView>
@@ -450,7 +554,6 @@ export default function SignToTextScreen() {
             {/* ── ALPHABET MODE UI ── */}
             {mode === 'alphabet' && (
               <>
-                {/* Current Letter Card */}
                 <View style={styles.wordCard}>
                   {currentLetter ? (
                     <>
@@ -463,11 +566,6 @@ export default function SignToTextScreen() {
                       </Text>
                       <Text style={styles.wordCardConf}>
                         {Math.round(currentLetterConfidence * 100)}% confidence
-                        {currentLetterConfidence < ALPHABET_CONFIDENCE_THRESHOLD
-                          ? ' — below threshold'
-                          : currentLetterConfidence >= ALPHABET_CONFIDENCE_THRESHOLD
-                          ? ' ✓'
-                          : ''}
                       </Text>
                     </>
                   ) : (
@@ -477,7 +575,6 @@ export default function SignToTextScreen() {
                   )}
                 </View>
 
-                {/* Current Word Section */}
                 <View style={styles.sentenceSection}>
                   <Text style={styles.sectionTitle}>Current Word</Text>
                   <View style={styles.sentenceBox}>
@@ -486,7 +583,6 @@ export default function SignToTextScreen() {
                     </Text>
                   </View>
 
-                  {/* Suggested Word (if available) */}
                   {!!suggestion && (
                     <View style={styles.suggestionContainer}>
                       <Text style={styles.suggestionLabel}>Did you mean:</Text>
@@ -499,7 +595,6 @@ export default function SignToTextScreen() {
                     </View>
                   )}
 
-                  {/* Alphabet Controls Grid */}
                   <View style={styles.controlsGrid}>
                     <TouchableOpacity
                       style={[styles.controlButton, styles.backspaceBtn]}
@@ -589,8 +684,6 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
-
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -619,8 +712,6 @@ const styles = StyleSheet.create({
     color: '#a0a0c0',
     marginTop: 2,
   },
-
-  // Mode Toggle
   toggleContainer: {
     flexDirection: 'row',
     marginBottom: 14,
@@ -643,13 +734,11 @@ const styles = StyleSheet.create({
   toggleButtonText: {
     color: '#a0a0c0',
     fontWeight: '600',
-    fontSize: 14,
+    fontSize: 13,
   },
   toggleButtonTextActive: {
     color: '#0a0a16',
   },
-
-  // Workspace layout
   workspace: {
     flex: 1,
     gap: 16,
@@ -660,8 +749,6 @@ const styles = StyleSheet.create({
   workspaceDesktop: {
     flexDirection: 'row',
   },
-
-  // Columns
   leftColumn: {
     gap: 16,
   },
@@ -685,8 +772,6 @@ const styles = StyleSheet.create({
   dataPanelDesktop: {
     flex: 0.8,
   },
-
-  // Camera panel
   cameraPanel: {
     width: '100%',
     aspectRatio: 4 / 3,
@@ -698,14 +783,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-
-  // Gesture / Letter overlay on camera
   gestureOverlay: {
     position: 'absolute',
     bottom: 16,
     left: 16,
     right: 16,
-    backgroundColor: 'rgba(10, 10, 22, 0.85)',
+    backgroundColor: 'rgba(10, 10, 22, 0.9)',
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 16,
@@ -715,11 +798,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0,255,204,0.3)',
   },
   gestureOverlayWord: {
-    fontSize: 36,
+    fontSize: 26,
     fontWeight: '800',
     color: '#00FFCC',
-    letterSpacing: 2,
+    letterSpacing: 1,
     marginBottom: 8,
+    textAlign: 'center',
   },
   confidenceBar: {
     width: '100%',
@@ -734,14 +818,12 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   confHigh: { backgroundColor: '#00FFCC' },
+  confLow:  { backgroundColor: '#FF3366' },
   confMid:  { backgroundColor: '#FFCC00' },
-  confLow:  { backgroundColor: '#FF9900' },
   confidenceLabel: {
     fontSize: 11,
     color: '#a0a0c0',
   },
-
-  // Recognition Header
   panelHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -776,8 +858,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: '#fff',
   },
-
-  // Word card
   wordCard: {
     backgroundColor: '#0d0d24',
     borderRadius: 12,
@@ -796,10 +876,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   wordCardWord: {
-    fontSize: 48,
+    fontSize: 28,
     fontWeight: '800',
     color: '#00FFCC',
-    letterSpacing: 4,
+    letterSpacing: 1,
+    textAlign: 'center',
   },
   wordCardWordDim: {
     color: '#5a5a8a',
@@ -815,33 +896,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-
-  // Live state
-  liveState: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#0d0d24',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: '#1f1f3a',
-  },
-  liveStateLabel: {
-    fontSize: 11,
-    color: '#5a5a8a',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  liveStateValue: {
-    fontSize: 12,
-    color: '#a0a0c0',
-    flex: 1,
-  },
-
-  // Transcript / Word History panel (below camera)
   transcriptBox: {
     backgroundColor: '#0d0d24',
     borderRadius: 12,
@@ -901,8 +955,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: 18,
   },
-
-  // Sentence / Word Builder Section
   sentenceSection: {
     backgroundColor: '#0d0d24',
     borderRadius: 12,
@@ -939,8 +991,27 @@ const styles = StyleSheet.create({
     color: '#4e4e75',
     fontStyle: 'italic',
   },
-
-  // Controls Grid
+  toggleAutoSpeakBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+  },
+  toggleAutoSpeakBtnActive: {
+    backgroundColor: 'rgba(0, 255, 204, 0.06)',
+    borderColor: 'rgba(0, 255, 204, 0.2)',
+  },
+  toggleAutoSpeakBtnText: {
+    fontSize: 12,
+    color: '#a0a0c0',
+    fontWeight: '600',
+  },
+  toggleAutoSpeakBtnTextActive: {
+    color: '#00FFCC',
+  },
   controlsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -976,6 +1047,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 51, 102, 0.15)',
     borderColor: '#FF3366',
   },
+  manualRecognizeBtn: {
+    backgroundColor: 'rgba(0, 180, 255, 0.15)',
+    borderColor: '#00B4FF',
+  },
+  tryAgainBtn: {
+    backgroundColor: 'rgba(100, 60, 255, 0.15)',
+    borderColor: '#6B3FFF',
+  },
   addWordBtn: {
     backgroundColor: 'rgba(100, 60, 255, 0.15)',
     borderColor: '#6B3FFF',
@@ -984,8 +1063,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 180, 255, 0.15)',
     borderColor: '#00B4FF',
   },
-
-  // Legend
   legend: {
     gap: 8,
     flex: 1,
