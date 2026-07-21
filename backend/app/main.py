@@ -33,6 +33,7 @@ from app.routes.hospital import router as hospital_router
 from app.routes.bank import router as bank_router
 from app.routes.emergency import router as emergency_router
 from app.routes.avatar import router as avatar_router
+from app.routes.sign import router as sign_router
 
 
 # ── Lifespan ───────────────────────────────────────────────────────────────────
@@ -160,6 +161,7 @@ app.include_router(hospital_router,   prefix=API_V1)
 app.include_router(bank_router,       prefix=API_V1)
 app.include_router(emergency_router,  prefix=API_V1)
 app.include_router(avatar_router,     prefix=API_V1)
+app.include_router(sign_router,       prefix=API_V1)
 
 # ── Static Files ──────────────────────────────────────────────────────────────
 current_dir = os.path.dirname(os.path.abspath(__file__))
