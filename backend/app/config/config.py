@@ -63,6 +63,7 @@ class Settings:
     COL_EMERGENCY_CONTACTS = "emergency_contacts"
     COL_CHAT_HISTORY       = "chat_history"
     COL_APP_SETTINGS       = "app_settings"
+    COL_SCHEMES            = "schemes"
 
 
 # Singleton — import this everywhere
