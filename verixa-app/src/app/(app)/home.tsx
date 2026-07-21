@@ -128,6 +128,22 @@ export default function HomeScreen() {
         <Text style={styles.featureArrow}>›</Text>
       </TouchableOpacity>
 
+      {/* Developer Dataset Recorder (Visible only in dev mode) */}
+      {__DEV__ && (
+        <TouchableOpacity
+          style={[styles.featureCard, { borderColor: 'rgba(0, 255, 204, 0.3)', borderWidth: 1 }]}
+          onPress={() => router.push('/sign-training' as any)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.featureIcon}>🛠️</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.featureTitle, { color: '#00FFCC' }]}>Sign Dataset Recorder</Text>
+            <Text style={styles.featureDesc}>[Dev Utility] Record sign sequence training dataset samples</Text>
+          </View>
+          <Text style={[styles.featureArrow, { color: '#00FFCC' }]}>›</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Emergency SOS Feature */}
       <TouchableOpacity
         style={styles.featureCard}
