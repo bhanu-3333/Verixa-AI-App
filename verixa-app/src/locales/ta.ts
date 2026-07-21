@@ -160,6 +160,20 @@ const ta: Record<string, string> = {
   emergency_confirm_delete: 'இந்த எச்சரிக்கையை நீக்க விரும்புகிறீர்களா?',
   emergency_error: 'பிழை',
 
+  // ── Sign Phrases ───────────────────────────────────────────
+  phrase_can_i_call_someone: 'நான் யாரையாவது அழைக்கலாமா?',
+  phrase_my_name_is: 'எனது பெயர்...',
+  phrase_i_have_lost_my_purse: 'நான் என் பணப்பையை இழந்துவிட்டேன்',
+  phrase_can_you_help_me: 'எனக்கு உதவ முடியுமா?',
+  phrase_can_you_repeat_what_you_said: 'நீங்கள் சொன்னதை மீண்டும் சொல்ல முடியுமா?',
+  phrase_where_is_this_address: 'இந்த முகவரி எங்கே உள்ளது?',
+  phrase_can_you_convey_this_to_someone: 'இதை யாரிடமாவது தெரிவிக்க முடியுமா?',
+  phrase_can_i_get_your_number: 'உங்கள் தொலைபேசி எண் எனக்கு கிடைக்குமா?',
+  phrase_who_are_you: 'நீங்கள் யார்?',
+  phrase_how_can_i_help_you: 'நான் உங்களுக்கு எப்படி உதவ முடியும்?',
+  phrase_not_recognized: 'சைகை அங்கீகரிக்கப்படவில்லை. மீண்டும் முயற்சிக்கவும்.',
+  phrase_show_sign: 'உங்கள் சைகையைக் காட்டுங்கள்',
+
   // ── Common ──────────────────────────────────────────────────
   error_prefix: 'பிழை',
   loading: 'ஏற்றுகிறது...',
