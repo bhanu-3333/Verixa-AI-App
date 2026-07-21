@@ -160,6 +160,20 @@ const en: Record<string, string> = {
   emergency_confirm_delete: 'Are you sure you want to delete this alert?',
   emergency_error: 'Error',
 
+  // ── Sign Phrases ───────────────────────────────────────────
+  phrase_can_i_call_someone: 'Can I call someone?',
+  phrase_my_name_is: 'My name is...',
+  phrase_i_have_lost_my_purse: 'I have lost my purse',
+  phrase_can_you_help_me: 'Can you help me?',
+  phrase_can_you_repeat_what_you_said: 'Can you repeat what you said?',
+  phrase_where_is_this_address: 'Where is this address?',
+  phrase_can_you_convey_this_to_someone: 'Can you convey this to someone?',
+  phrase_can_i_get_your_number: 'Can I get your number?',
+  phrase_who_are_you: 'Who are you?',
+  phrase_how_can_i_help_you: 'How can I help you?',
+  phrase_not_recognized: 'Sign not recognized. Please try again.',
+  phrase_show_sign: 'Show your sign',
+
   // ── Common ──────────────────────────────────────────────────
   error_prefix: 'Error',
   loading: 'Loading...',
