@@ -84,6 +84,7 @@ class Database:
             settings.COL_CHAT_HISTORY,
             settings.COL_APP_SETTINGS,
             settings.COL_EMERGENCY_ALERTS,
+            settings.COL_SCHEMES,
         ]
         existing = await self.db.list_collection_names()
         for name in required:
@@ -118,6 +119,8 @@ class Database:
     def chat_history(self)       -> AsyncIOMotorCollection: return self._col(settings.COL_CHAT_HISTORY)
     @property
     def app_settings(self)       -> AsyncIOMotorCollection: return self._col(settings.COL_APP_SETTINGS)
+    @property
+    def schemes(self)            -> AsyncIOMotorCollection: return self._col(settings.COL_SCHEMES)
 
 
 # ── Singleton ──────────────────────────────────────────────────────────────────
