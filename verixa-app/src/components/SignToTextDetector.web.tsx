@@ -18,6 +18,7 @@ import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
 import type { Results, NormalizedLandmark } from '@mediapipe/hands';
 
 interface SignToTextDetectorProps {
+  onHandsDetected?: (hands: { leftHand: NormalizedLandmark[] | null; rightHand: NormalizedLandmark[] | null }) => void;
   onHandDetected?: (landmarks: NormalizedLandmark[]) => void;
   onHandNotDetected?: () => void;
 }
@@ -69,6 +70,7 @@ function loadMediaPipeScript(): Promise<void> {
 // --------------------------------------------------------------------------
 
 export default function SignToTextDetector({
+  onHandsDetected,
   onHandDetected,
   onHandNotDetected,
 }: SignToTextDetectorProps) {
@@ -157,7 +159,7 @@ export default function SignToTextDetector({
         });
 
         handsDetector.setOptions({
-          maxNumHands: 1,
+          maxNumHands: 2,
           modelComplexity: 1,
           minDetectionConfidence: 0.5,
           minTrackingConfidence: 0.5,
@@ -181,37 +183,61 @@ export default function SignToTextDetector({
 
           ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-          if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-            const landmarks = results.multiHandLandmarks[0];
+          let leftHand: NormalizedLandmark[] | null = null;
+          let rightHand: NormalizedLandmark[] | null = null;
 
-            // Draw connections
-            ctx.strokeStyle = '#00FFCC';
-            ctx.lineWidth = 4;
-            for (const connection of HAND_CONNECTIONS) {
-              const start = landmarks[connection[0]];
-              const end = landmarks[connection[1]];
-              if (start && end) {
+          if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            // Draw all detected hands
+            for (let handIdx = 0; handIdx < results.multiHandLandmarks.length; handIdx++) {
+              const landmarks = results.multiHandLandmarks[handIdx];
+              const handedness = results.multiHandedness[handIdx];
+
+              if (handedness) {
+                // handedness.label corresponds to Left or Right
+                if (handedness.label === 'Left') {
+                  leftHand = landmarks;
+                } else if (handedness.label === 'Right') {
+                  rightHand = landmarks;
+                }
+              }
+
+              // Draw connections
+              ctx.strokeStyle = handIdx === 0 ? '#00FFCC' : '#FF3366';
+              ctx.lineWidth = 4;
+              for (const connection of HAND_CONNECTIONS) {
+                const start = landmarks[connection[0]];
+                const end = landmarks[connection[1]];
+                if (start && end) {
+                  ctx.beginPath();
+                  ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
+                  ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+                  ctx.stroke();
+                }
+              }
+
+              // Draw landmarks
+              for (let i = 0; i < landmarks.length; i++) {
+                const lm = landmarks[i];
+                const isTip = [4, 8, 12, 16, 20].includes(i);
+                ctx.fillStyle = isTip ? '#FF3366' : '#FFCC00';
                 ctx.beginPath();
-                ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
-                ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+                ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 6, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.lineWidth = 1.5;
                 ctx.stroke();
               }
             }
 
-            // Draw landmarks
-            for (let i = 0; i < landmarks.length; i++) {
-              const lm = landmarks[i];
-              const isTip = [4, 8, 12, 16, 20].includes(i);
-              ctx.fillStyle = isTip ? '#FF3366' : '#FFCC00';
-              ctx.beginPath();
-              ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 6, 0, 2 * Math.PI);
-              ctx.fill();
-              ctx.strokeStyle = '#FFFFFF';
-              ctx.lineWidth = 1.5;
-              ctx.stroke();
+            // Fire legacy single hand callback for backward compatibility
+            if (onHandDetected) {
+              onHandDetected(results.multiHandLandmarks[0]);
             }
 
-            if (onHandDetected) onHandDetected(landmarks);
+            // Fire new structured multi-hand callback
+            if (onHandsDetected) {
+              onHandsDetected({ leftHand, rightHand });
+            }
           } else {
             if (onHandNotDetected) onHandNotDetected();
           }
