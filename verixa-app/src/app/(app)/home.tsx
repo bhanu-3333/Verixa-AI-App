@@ -12,6 +12,7 @@ import {
 import { router } from 'expo-router';
 import { getUser, clearAuth } from '../../utils/storage';
 import type { User } from '../../services/authService';
+import { t } from '../../services/LanguageService';
 
 export default function HomeScreen() {
   const [user,    setUser]    = useState<User | null>(null);
@@ -126,6 +127,20 @@ export default function HomeScreen() {
           <Text style={styles.featureDesc}>Translate hand signs into text in real time</Text>
         </View>
         <Text style={styles.featureArrow}>›</Text>
+      </TouchableOpacity>
+
+      {/* Schemes & Benefits Feature */}
+      <TouchableOpacity
+        style={[styles.featureCard, { borderColor: 'rgba(0, 230, 118, 0.4)', borderWidth: 1.5 }]}
+        onPress={() => router.push('/schemes' as any)}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.featureIcon}>🎁</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.featureTitle, { color: '#00E676' }]}>{t('home_schemes')}</Text>
+          <Text style={styles.featureDesc}>{t('home_schemes_desc')}</Text>
+        </View>
+        <Text style={[styles.featureArrow, { color: '#00E676' }]}>›</Text>
       </TouchableOpacity>
 
       {/* Developer Dataset Recorder (Visible only in dev mode) */}
