@@ -8,6 +8,7 @@ import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 interface SignToTextDetectorProps {
+  onHandsDetected?: (hands: { leftHand: any[] | null; rightHand: any[] | null }) => void;
   onHandDetected?: (landmarks: any[]) => void;
   onHandNotDetected?: () => void;
 }
