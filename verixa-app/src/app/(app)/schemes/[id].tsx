@@ -36,6 +36,15 @@ export default function SchemeDetailScreen() {
   // Bookmark state
   const [isSaved, setIsSaved] = useState(false);
 
+  // Safe back navigation — falls back to schemes list when there is no history
+  const goBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(app)/schemes');
+    }
+  };
+
   const fetchSchemeDetails = useCallback(async () => {
     if (!id) return;
     try {
@@ -152,7 +161,7 @@ export default function SchemeDetailScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centerContainer}>
           <Text style={styles.errorText}>⚠️ {errorMsg || 'Scheme not found.'}</Text>
-          <TouchableOpacity style={styles.backBtnError} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.backBtnError} onPress={goBack}>
             <Text style={styles.backBtnErrorText}>‹ {t('bank_back')}</Text>
           </TouchableOpacity>
         </View>
@@ -171,7 +180,7 @@ export default function SchemeDetailScreen() {
 
         {/* ── Top Bar ── */}
         <View style={styles.topBar}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.backBtn} onPress={goBack}>
             <Text style={styles.backBtnText}>‹ {t('bank_back')}</Text>
           </TouchableOpacity>
 
