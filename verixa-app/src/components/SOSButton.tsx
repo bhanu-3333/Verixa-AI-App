@@ -1,34 +1,47 @@
 // src/components/SOSButton.tsx
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, ActivityIndicator, Pressable, StyleSheet, Text, View, Animated, Easing, Platform } from 'react-native';
+import {
+  Alert,
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  Animated,
+  Easing,
+  Platform,
+} from 'react-native';
+import * as Haptics from 'expo-haptics';
 
-/**
- * Reusable, premium SOS button.
- *
- * Props:
- *  - onPress: async callback that performs the SOS request.
- *  - disabled?: external disable flag (e.g., when the screen is locked).
- *  - size?: diameter of the circular button (default 120).
- *
- * Behaviour:
- *  • Large red circular button with a pulsing animation when enabled.
- *  • Shows a confirmation dialog before invoking the async onPress.
- *  • While the request is in progress the button shows a spinner and is disabled.
- */
 export interface SOSButtonProps {
   onPress: () => Promise<void>;
   disabled?: boolean;
   size?: number;
+  /** Hold duration in milliseconds (default 1800ms) */
+  holdDurationMs?: number;
 }
 
-export const SOSButton: React.FC<SOSButtonProps> = ({ onPress, disabled = false, size = 120 }) => {
+export const SOSButton: React.FC<SOSButtonProps> = ({
+  onPress,
+  disabled = false,
+  size = 140,
+  holdDurationMs = 1800,
+}) => {
   const [loading, setLoading] = useState(false);
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const [isHolding, setIsHolding] = useState(false);
+  const [progressPercent, setProgressPercent] = useState(0);
 
-  // Pulse animation – runs only when button is enabled and not loading
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  const holdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const holdStartTimeRef = useRef<number>(0);
+  const triggeredRef = useRef<boolean>(false);
+
+  // Pulse animation when idle and enabled
   useEffect(() => {
-    if (disabled || loading) {
+    if (disabled || loading || isHolding) {
       scaleAnim.setValue(1);
       return;
     }
@@ -50,50 +63,96 @@ export const SOSButton: React.FC<SOSButtonProps> = ({ onPress, disabled = false,
     );
     pulse.start();
     return () => pulse.stop();
-  }, [disabled, loading, scaleAnim]);
+  }, [disabled, loading, isHolding, scaleAnim]);
 
   const isDisabled = disabled || loading;
 
-  const handlePress = () => {
-    console.log("SOS Button Pressed");
-    if (isDisabled) {
-      console.log("SOS Button Press ignored - Button is disabled or loading");
-      return;
+  const triggerSOS = async () => {
+    if (triggeredRef.current || loading) return;
+    triggeredRef.current = true;
+    setIsHolding(false);
+    setProgressPercent(100);
+
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    } catch (_) {}
+
+    try {
+      setLoading(true);
+      await onPress();
+    } finally {
+      setLoading(false);
+      triggeredRef.current = false;
+      setProgressPercent(0);
+    }
+  };
+
+  const handlePressIn = () => {
+    if (isDisabled) return;
+
+    triggeredRef.current = false;
+    setIsHolding(true);
+    setProgressPercent(0);
+    holdStartTimeRef.current = Date.now();
+
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    } catch (_) {}
+
+    if (holdTimerRef.current) clearInterval(holdTimerRef.current);
+
+    holdTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - holdStartTimeRef.current;
+      const pct = Math.min(100, Math.floor((elapsed / holdDurationMs) * 100));
+      setProgressPercent(pct);
+
+      if (pct >= 100) {
+        if (holdTimerRef.current) clearInterval(holdTimerRef.current);
+        triggerSOS();
+      }
+    }, 40);
+  };
+
+  const handlePressOut = () => {
+    if (triggeredRef.current) return;
+
+    if (holdTimerRef.current) {
+      clearInterval(holdTimerRef.current);
+      holdTimerRef.current = null;
     }
 
-    // Platform.OS === 'web' fallback because Alert.alert is a no-op on Web
+    const elapsed = Date.now() - holdStartTimeRef.current;
+    setIsHolding(false);
+
+    // If hold was released early (before holdDurationMs)
+    if (elapsed < holdDurationMs) {
+      setProgressPercent(0);
+      // On Web or fast tap, fall back to confirmation dialog if tapped without holding
+      if (elapsed < 300) {
+        handleQuickTapFallback();
+      }
+    }
+  };
+
+  const handleQuickTapFallback = () => {
     const isWeb = typeof window !== 'undefined' && (Platform.OS === 'web' || !Alert.alert);
     if (isWeb) {
-      const confirmSend = window.confirm('Are you sure you want to send an emergency alert?');
+      const confirmSend = window.confirm('Hold SOS button for 2 seconds to activate, or click OK to activate immediately.');
       if (confirmSend) {
-        (async () => {
-          try {
-            setLoading(true);
-            await onPress();
-          } finally {
-            setLoading(false);
-          }
-        })();
+        triggerSOS();
       }
       return;
     }
 
     Alert.alert(
-      'Confirm SOS',
-      'Are you sure you want to send an emergency alert?',
+      'Activate Emergency SOS',
+      'Hold the SOS button for 2 seconds to activate, or tap Activate below.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Send',
+          text: 'Activate Now',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              setLoading(true);
-              await onPress();
-            } finally {
-              setLoading(false);
-            }
-          },
+          onPress: () => triggerSOS(),
         },
       ],
       { cancelable: true }
@@ -101,39 +160,90 @@ export const SOSButton: React.FC<SOSButtonProps> = ({ onPress, disabled = false,
   };
 
   return (
-    <Pressable onPress={handlePress} style={[styles.pressable, { width: size, height: size, borderRadius: size / 2 }]}>
-      <Animated.View
-        style={[
-          styles.button,
-          { width: size, height: size, borderRadius: size / 2 },
-          { transform: [{ scale: scaleAnim }] },
-          isDisabled && styles.disabled,
-        ]}
+    <View style={styles.outerContainer}>
+      <Pressable
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={isDisabled}
+        style={[styles.pressable, { width: size + 20, height: size + 20 }]}
       >
-        {loading ? (
-          <ActivityIndicator size="large" color="#fff" />
-        ) : (
-          <Text style={styles.text}>SOS</Text>
-        )}
-      </Animated.View>
-    </Pressable>
+        <Animated.View
+          style={[
+            styles.button,
+            { width: size, height: size, borderRadius: size / 2 },
+            { transform: [{ scale: isHolding ? 1.12 : scaleAnim }] },
+            isDisabled && styles.disabled,
+            isHolding && styles.buttonHolding,
+          ]}
+        >
+          {loading ? (
+            <ActivityIndicator size="large" color="#fff" />
+          ) : isHolding ? (
+            <View style={styles.holdingContent}>
+              <Text style={styles.percentText}>{progressPercent}%</Text>
+              <Text style={styles.holdSubText}>HOLDING...</Text>
+            </View>
+          ) : (
+            <View style={styles.idleContent}>
+              <Text style={styles.text}>SOS</Text>
+              <Text style={styles.subText}>HOLD 2s</Text>
+            </View>
+          )}
+        </Animated.View>
+      </Pressable>
+
+      {isHolding && (
+        <Text style={styles.hintLabel}>Keep holding to activate emergency siren...</Text>
+      )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  pressable: { alignItems: 'center', justifyContent: 'center' },
+  outerContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pressable: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   button: {
     backgroundColor: '#e53935',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 6,
+    shadowColor: '#f44336',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+    borderWidth: 4,
+    borderColor: '#ff6666',
+  },
+  buttonHolding: {
+    backgroundColor: '#b71c1c',
+    borderColor: '#ff1744',
   },
   disabled: { opacity: 0.6 },
-  text: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
+  idleContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  holdingContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  text: { color: '#fff', fontSize: 28, fontWeight: '900', letterSpacing: 1 },
+  subText: { color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: '700', marginTop: 2 },
+  percentText: { color: '#fff', fontSize: 26, fontWeight: '900' },
+  holdSubText: { color: '#ff8a80', fontSize: 10, fontWeight: '800', marginTop: 2, letterSpacing: 0.5 },
+  hintLabel: {
+    color: '#ff8a80',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+    textAlign: 'center',
+  },
 });
 
 export default SOSButton;
