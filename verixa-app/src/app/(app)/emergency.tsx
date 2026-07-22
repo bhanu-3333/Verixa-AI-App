@@ -26,6 +26,7 @@ import {
   EmergencyHistoryEntry,
 } from '../../services/EmergencyService';
 import { SOSButton } from '../../components/SOSButton';
+import emergencyAlarmService, { AlarmState } from '../../services/EmergencyAlarmService';
 
 /** Emergency SOS Screen */
 export default function EmergencyScreen() {
@@ -39,6 +40,18 @@ export default function EmergencyScreen() {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [emergencyType, setEmergencyType] = useState<'Medical' | 'Police' | 'Fire' | 'General'>('General');
   const [isFallback, setIsFallback] = useState(false);
+  const [alarmState, setAlarmState] = useState<AlarmState>(emergencyAlarmService.getState());
+
+  // Subscribe to EmergencyAlarmService state changes
+  useEffect(() => {
+    const unsubscribe = emergencyAlarmService.subscribe((state) => {
+      setAlarmState(state);
+    });
+    return () => {
+      unsubscribe();
+      emergencyAlarmService.cleanup();
+    };
+  }, []);
 
   // Fetch GPS location on mount
   useEffect(() => {
@@ -125,22 +138,32 @@ export default function EmergencyScreen() {
   /** Main SOS handler — called after user confirms */
   const executeSOS = async () => {
     console.log("handleSOS called");
-    if (!location) {
-      const isWeb = Platform.OS === 'web';
-      if (isWeb) {
-        window.alert(t('emergency_no_location'));
-      } else {
-        Alert.alert(t('emergency_no_location_title'), t('emergency_no_location'));
-      }
-      return;
-    }
+
+    // 🚨 IMMEDIATELY start loud local siren & repeating vibration BEFORE any network or location calls!
+    emergencyAlarmService.startAlarm(30000);
 
     setSending(true);
     setSuccess(false);
 
-    // 1. Trigger vibration + haptic immediately
+    // Trigger additional initial vibration/haptic
     triggerVibration();
     await triggerHaptic();
+
+    // If no GPS location yet, still keep the siren running but warn the user
+    if (!location) {
+      const noLocMsg = t('emergency_no_location') || 'Location unavailable. Local siren is active. WhatsApp alert could not include your location.';
+      const isWeb = Platform.OS === 'web';
+      if (isWeb) {
+        window.alert('⚠️ ' + noLocMsg);
+      } else {
+        Alert.alert(
+          t('emergency_no_location_title') || 'Location Unavailable',
+          noLocMsg + '\n\n🔊 Local emergency siren is active on your device.'
+        );
+      }
+      setSending(false);
+      return; // Siren keeps playing — user can stop it manually
+    }
 
     const payload: EmergencyPayload = {
       user_id: 'current_user', // resolved from JWT on backend
@@ -166,22 +189,37 @@ export default function EmergencyScreen() {
       } else {
         setSuccess(false);
         if (isWeb) {
-          window.alert('❌ ' + t('emergency_failed_popup_title') + ': ' + res.message);
+          window.alert('❌ ' + t('emergency_failed_popup_title') + ': ' + res.message + '\n\n🔊 Local siren is still active.');
         } else {
-          Alert.alert('❌ ' + t('emergency_failed_popup_title'), res.message);
+          Alert.alert('❌ ' + t('emergency_failed_popup_title'), res.message + '\n\n🔊 Local siren is still active on your device.');
         }
       }
       // Refresh history
-      const fresh = await getSOSHistory();
-      setHistory(fresh);
+      try {
+        const fresh = await getSOSHistory();
+        setHistory(fresh);
+      } catch (_) {
+        // History refresh is non-critical
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to send SOS alert.';
       console.warn('[EmergencyScreen] SOS send error:', e);
+
+      // Determine if this is a network/connectivity error
+      const isNetworkError = msg.includes('Network Error') || msg.includes('timeout') || msg.includes('ECONNREFUSED') || msg.includes('ERR_NETWORK');
+
       const isWeb = Platform.OS === 'web';
+      const offlineNote = isNetworkError
+        ? '\n\n🔊 Local siren is active. WhatsApp alert failed — no network connection.'
+        : '\n\n🔊 Local siren is still active on your device.';
+
       if (isWeb) {
-        window.alert('❌ ' + t('emergency_failed_popup_title') + ': ' + msg);
+        window.alert('❌ ' + (t('emergency_failed_popup_title') || 'Alert Failed') + ': ' + msg + offlineNote);
       } else {
-        Alert.alert('❌ ' + t('emergency_failed_popup_title'), msg);
+        Alert.alert(
+          '❌ ' + (t('emergency_failed_popup_title') || 'Alert Failed'),
+          msg + offlineNote
+        );
       }
       if (msg.includes('Authentication token required') || msg.includes('Session expired') || msg.includes('log in again')) {
         router.replace('/(auth)/login');
@@ -295,6 +333,38 @@ export default function EmergencyScreen() {
             onPress={executeSOS}
             disabled={sending || loadingLocation || !location}
           />
+
+        {/* Active Alarm Control (Stop Alarm) */}
+        {alarmState.alarmActive && (
+          <View style={styles.activeAlarmContainer}>
+            <View style={styles.alarmBadge}>
+              <Text style={styles.alarmBadgeText}>🚨 SIREN ACTIVE</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.stopAlarmBtn}
+              onPress={() => emergencyAlarmService.stopAlarm()}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.stopAlarmText}>🔇 Stop Alarm</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Web Autoplay / Error Fallback */}
+        {alarmState.alarmError && (
+          <View style={styles.alarmErrorContainer}>
+            <Text style={styles.alarmErrorText}>
+              {alarmState.errorMessage || 'Siren blocked by browser autoplay.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.enableAlarmBtn}
+              onPress={() => emergencyAlarmService.startAlarm(30000)}
+            >
+              <Text style={styles.enableAlarmText}>🔊 Tap to Enable Siren</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {sending && (
           <View style={styles.sendingRow}>
             <ActivityIndicator color="#e53935" />
@@ -560,5 +630,73 @@ const styles = StyleSheet.create({
   typeChipTextActive: {
     color: '#f85149',
     fontWeight: '700',
+  },
+  activeAlarmContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 12,
+    gap: 10,
+  },
+  alarmBadge: {
+    backgroundColor: '#b71c1c',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#ff5252',
+  },
+  alarmBadgeText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 12,
+    letterSpacing: 1,
+  },
+  stopAlarmBtn: {
+    backgroundColor: '#d32f2f',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+    width: '90%',
+    alignItems: 'center',
+    shadowColor: '#f44336',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#ff6666',
+  },
+  stopAlarmText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  alarmErrorContainer: {
+    marginTop: 12,
+    alignItems: 'center',
+    backgroundColor: '#2a1a1a',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#f44336',
+    gap: 8,
+    width: '90%',
+  },
+  alarmErrorText: {
+    color: '#ff8a80',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  enableAlarmBtn: {
+    backgroundColor: '#e53935',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  enableAlarmText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 13,
   },
 });
