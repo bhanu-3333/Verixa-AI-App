@@ -38,10 +38,11 @@ export default function SignTrainingScreen() {
   const [recordingState, setRecordingState] = useState<'idle' | 'countdown' | 'recording' | 'saving'>('idle');
   const [countdown, setCountdown] = useState<number>(3);
   const [recordingTime, setRecordingTime] = useState<number>(0);
-  const [recordedFrames, setRecordedFrames] = useState<FrameHands[]>([]);
+  const [recordedFrameCount, setRecordedFrameCount] = useState<number>(0);
 
-  // Ref to track multi-hand landmarks during the active recording window
-  const activeFramesRef = useRef<FrameHands[]>([]);
+  // Mutable refs to prevent React stale closure bugs in MediaPipe async callbacks
+  const isRecordingRef = useRef<boolean>(false);
+  const capturedFramesRef = useRef<FrameHands[]>([]);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -62,42 +63,52 @@ export default function SignTrainingScreen() {
   };
 
   useEffect(() => {
+    console.log('[SignTraining] Camera ready & mounted.');
     fetchStats();
     return () => {
+      isRecordingRef.current = false;
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       if (recordTimerRef.current) clearInterval(recordTimerRef.current);
     };
   }, []);
 
   const handleHandsDetected = (hands: { leftHand: any[] | null; rightHand: any[] | null }) => {
-    setHandDetected(hands.leftHand !== null || hands.rightHand !== null);
+    const hasHand = hands.leftHand !== null || hands.rightHand !== null;
+    setHandDetected(hasHand);
 
-    if (recordingState === 'recording') {
+    // Read real-time recording flag from ref (avoids React stale closure bug)
+    if (isRecordingRef.current) {
       const frame: FrameHands = {
         leftHand: hands.leftHand ? hands.leftHand.map(l => ({ x: l.x, y: l.y, z: l.z })) : null,
         rightHand: hands.rightHand ? hands.rightHand.map(l => ({ x: l.x, y: l.y, z: l.z })) : null,
       };
-      activeFramesRef.current.push(frame);
-      setRecordedFrames([...activeFramesRef.current]);
+      capturedFramesRef.current.push(frame);
+      const newCount = capturedFramesRef.current.length;
+      setRecordedFrameCount(newCount);
+      if (newCount % 5 === 0 || newCount === 1) {
+        console.log(`[SignTraining] Captured frame #${newCount} (left: ${!!hands.leftHand}, right: ${!!hands.rightHand})`);
+      }
     }
   };
 
   const handleHandNotDetected = () => {
     setHandDetected(false);
-    if (recordingState === 'recording') {
-      // Record an empty hands frame (backend handles fill zeros)
+    if (isRecordingRef.current) {
+      // Record an empty hands frame
       const frame: FrameHands = { leftHand: null, rightHand: null };
-      activeFramesRef.current.push(frame);
-      setRecordedFrames([...activeFramesRef.current]);
+      capturedFramesRef.current.push(frame);
+      setRecordedFrameCount(capturedFramesRef.current.length);
     }
   };
 
   const startCountdown = () => {
     if (recordingState !== 'idle') return;
+    console.log('[SignTraining] Countdown started...');
     setRecordingState('countdown');
     setCountdown(3);
-    activeFramesRef.current = [];
-    setRecordedFrames([]);
+    isRecordingRef.current = false;
+    capturedFramesRef.current = [];
+    setRecordedFrameCount(0);
 
     countdownTimerRef.current = setInterval(() => {
       setCountdown((prev) => {
@@ -112,16 +123,20 @@ export default function SignTrainingScreen() {
   };
 
   const startRecording = () => {
+    console.log('[SignTraining] Recording active: true');
+    isRecordingRef.current = true;
+    capturedFramesRef.current = [];
+    setRecordedFrameCount(0);
     setRecordingState('recording');
     setRecordingTime(0);
 
     recordTimerRef.current = setInterval(() => {
       setRecordingTime((prev) => {
-        // Record for exactly 3 seconds
-        if (prev >= 2.9) {
+        // Record for ~3.5 seconds to ensure at least 30+ frames
+        if (prev >= 3.4) {
           if (recordTimerRef.current) clearInterval(recordTimerRef.current);
           stopAndSaveRecording();
-          return 3.0;
+          return 3.5;
         }
         return prev + 0.1;
       });
@@ -129,20 +144,37 @@ export default function SignTrainingScreen() {
   };
 
   const stopAndSaveRecording = async () => {
+    isRecordingRef.current = false;
     setRecordingState('saving');
-    const finalFrames = activeFramesRef.current;
-    
-    if (finalFrames.length === 0) {
+
+    const recorded = [...capturedFramesRef.current];
+    console.log('[SignTraining] Recording complete');
+    console.log(`[SignTraining] Total captured frames: ${recorded.length}`);
+
+    // Count valid hand frames
+    const validFrames = recorded.filter(f => f.leftHand !== null || f.rightHand !== null);
+    console.log(`[SignTraining] Total valid hand frames: ${validFrames.length}`);
+
+    if (recorded.length === 0) {
       alert('No frames captured. Please keep your hands visible.');
       setRecordingState('idle');
       return;
     }
 
+    if (validFrames.length < 15) {
+      alert(`Only ${validFrames.length} valid hand frames were captured. Keep your hands inside the camera frame and try again.`);
+      setRecordingState('idle');
+      return;
+    }
+
     try {
-      await SignService.recordSample(selectedPhrase, finalFrames);
+      console.log(`[SignTraining] Uploading ${recorded.length} frames for phrase '${selectedPhrase}' to POST /api/v1/sign/record...`);
+      const response = await SignService.recordSample(selectedPhrase, recorded);
+      console.log('[SignTraining] ✅ Save success:', response);
       // Reload stats after successful save
       await fetchStats();
     } catch (err: any) {
+      console.error('[SignTraining] ❌ Save failed:', err);
       alert(`Save failed: ${err.message}`);
     } finally {
       setRecordingState('idle');
@@ -258,7 +290,7 @@ export default function SignTrainingScreen() {
                 <View style={[styles.overlayLayer, styles.overlayRecording]}>
                   <Text style={styles.recordingText}> RECORDING</Text>
                   <Text style={styles.recordingTimer}>{recordingTime.toFixed(1)}s</Text>
-                  <Text style={styles.recordingFrames}>{recordedFrames.length} frames captured</Text>
+                  <Text style={styles.recordingFrames}>Frames captured: {recordedFrameCount} / 30 {recordedFrameCount >= 30 ? '✓' : ''}</Text>
                 </View>
               )}
 
