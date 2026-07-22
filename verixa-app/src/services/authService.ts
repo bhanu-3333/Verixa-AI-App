@@ -5,29 +5,9 @@
  */
 
 import axios from 'axios';
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
+import { API_BASE_URL } from '../config/api';
 
-// ── Backend URL ────────────────────────────────────────────────────────────
-// Web browser (localhost:8081) → backend on same PC → use localhost
-// Android emulator uses 10.0.2.2, iOS simulator uses localhost
-// Phone on WiFi → backend on LAN IP → use the IP where Expo is running
-export const BACKEND_URL = (() => {
-  if (Platform.OS === 'web') {
-    return 'http://localhost:8000';
-  }
-  
-  // Try to resolve the host machine's IP dynamically using Expo CLI's debugger host
-  const hostUri = Constants.expoConfig?.hostUri; // e.g., '10.245.162.219:8081' or '192.168.1.10:8081'
-  if (hostUri) {
-    const ip = hostUri.split(':')[0];
-    return `http://${ip}:8000`;
-  }
-  
-  // Fallbacks:
-  // If we can't find hostUri, default to the developer machine's current LAN IP
-  return 'http://10.245.162.219:8000';
-})();
+export const BACKEND_URL = API_BASE_URL;
 
 // Axios instance — baseURL is set once, all calls use relative paths
 const API = axios.create({
