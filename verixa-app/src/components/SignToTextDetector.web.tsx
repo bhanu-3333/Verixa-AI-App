@@ -79,6 +79,17 @@ export default function SignToTextDetector({
   const [initError, setInitError] = useState<string | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
 
+  // Keep mutable refs for callbacks to prevent stale closure issues inside MediaPipe async callbacks
+  const onHandsDetectedRef = useRef(onHandsDetected);
+  const onHandDetectedRef = useRef(onHandDetected);
+  const onHandNotDetectedRef = useRef(onHandNotDetected);
+
+  useEffect(() => {
+    onHandsDetectedRef.current = onHandsDetected;
+    onHandDetectedRef.current = onHandDetected;
+    onHandNotDetectedRef.current = onHandNotDetected;
+  }, [onHandsDetected, onHandDetected, onHandNotDetected]);
+
   // Camera permission via native browser API (no expo-camera on web)
   useEffect(() => {
     navigator.mediaDevices
@@ -108,7 +119,7 @@ export default function SignToTextDetector({
         video.onloadedmetadata = () => {
           video!.play();
           setCameraReady(true);
-          console.log('[SignToTextDetector] Camera stream active.');
+          console.log('[SignToTextDetector] Camera stream active. Camera ready.');
         };
       })
       .catch((err) => {
@@ -148,12 +159,11 @@ export default function SignToTextDetector({
           );
         }
 
-        console.log('[SignToTextDetector] window.Hands found. Creating instance...');
+        console.log('[SignToTextDetector] window.Hands found. Creating MediaPipe Hands instance...');
 
         const handsDetector = new HandsClass({
           locateFile: (file: string) => {
             const url = `/mediapipe/hands/${file}`;
-            console.log(`[SignToTextDetector] locateFile → ${url}`);
             return url;
           },
         });
@@ -185,15 +195,15 @@ export default function SignToTextDetector({
 
           let leftHand: NormalizedLandmark[] | null = null;
           let rightHand: NormalizedLandmark[] | null = null;
+          const detectedCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
 
-          if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-            // Draw all detected hands
+          if (detectedCount > 0) {
+            // Parse detected hands
             for (let handIdx = 0; handIdx < results.multiHandLandmarks.length; handIdx++) {
               const landmarks = results.multiHandLandmarks[handIdx];
-              const handedness = results.multiHandedness[handIdx];
+              const handedness = results.multiHandedness ? results.multiHandedness[handIdx] : null;
 
-              if (handedness) {
-                // handedness.label corresponds to Left or Right
+              if (handedness && handedness.label) {
                 if (handedness.label === 'Left') {
                   leftHand = landmarks;
                 } else if (handedness.label === 'Right') {
@@ -229,31 +239,70 @@ export default function SignToTextDetector({
               }
             }
 
-            // Fire legacy single hand callback for backward compatibility
-            if (onHandDetected) {
-              onHandDetected(results.multiHandLandmarks[0]);
+            // Fallback: If hands are detected but handedness labels were missing or unclassified
+            if (!leftHand && !rightHand) {
+              leftHand = results.multiHandLandmarks[0];
+              if (results.multiHandLandmarks.length > 1) {
+                rightHand = results.multiHandLandmarks[1];
+              }
             }
 
-            // Fire new structured multi-hand callback
-            if (onHandsDetected) {
-              onHandsDetected({ leftHand, rightHand });
+            // Draw visual status badge on canvas
+            ctx.fillStyle = 'rgba(10, 10, 22, 0.75)';
+            ctx.fillRect(12, 12, 175, 32);
+            ctx.strokeStyle = '#00FFCC';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(12, 12, 175, 32);
+
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillStyle = '#00FFCC';
+            ctx.fillText(
+              detectedCount === 1 ? '🟢 1 Hand Detected' : '🟢 2 Hands Detected',
+              24,
+              32
+            );
+
+            // Fire latest callbacks via refs
+            if (onHandDetectedRef.current) {
+              onHandDetectedRef.current(results.multiHandLandmarks[0]);
+            }
+            if (onHandsDetectedRef.current) {
+              onHandsDetectedRef.current({ leftHand, rightHand });
             }
           } else {
-            if (onHandNotDetected) onHandNotDetected();
+            // Draw No Hand Status badge
+            ctx.fillStyle = 'rgba(10, 10, 22, 0.75)';
+            ctx.fillRect(12, 12, 175, 32);
+            ctx.strokeStyle = '#FF3366';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(12, 12, 175, 32);
+
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillStyle = '#FF3366';
+            ctx.fillText('🔴 No Hand Detected', 24, 32);
+
+            if (onHandNotDetectedRef.current) {
+              onHandNotDetectedRef.current();
+            }
           }
         });
 
         console.log('[SignToTextDetector] Calling handsDetector.initialize()...');
         await handsDetector.initialize();
-        console.log('[SignToTextDetector] ✅ MediaPipe Hands initialized successfully!');
+        console.log('[MediaPipe] Model initialized successfully!');
         setDetectorReady(true);
 
         // Frame processing loop
+        let frameCount = 0;
         const processFrame = async () => {
           if (!active) return;
           const video = document.getElementById('mp-camera-video') as HTMLVideoElement | null;
           if (video && video.readyState >= 2) {
             try {
+              frameCount++;
+              if (frameCount % 60 === 0) {
+                console.log('[MediaPipe] Processing frame active...');
+              }
               await handsDetector.send({ image: video });
             } catch (err) {
               console.warn('[SignToTextDetector] Frame send error:', err);
