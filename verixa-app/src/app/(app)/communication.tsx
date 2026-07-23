@@ -13,8 +13,10 @@ import {
 import { router } from 'expo-router';
 import { SignLanguageAvatar, SignLanguageAvatarRef } from '../../components/SignLanguageAvatar';
 import { translateTextToSigml } from '../../services/avatarService';
+import { useLanguage } from '../../components/LanguageProvider';
 
 export default function CommunicationScreen() {
+  const { t } = useLanguage();
   const avatarRef = useRef<SignLanguageAvatarRef>(null);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,7 +35,6 @@ export default function CommunicationScreen() {
     } catch (err: any) {
       const msg = err.message || 'Failed to translate sign text.';
       setErrorMsg(msg);
-      // If session expired, redirect to login after a brief delay
       if (msg.includes('Session expired') || msg.includes('log in again')) {
         setTimeout(() => router.replace('/(auth)/login'), 2000);
       }
@@ -56,10 +57,10 @@ export default function CommunicationScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backBtnText}>‹ Back</Text>
+          <Text style={styles.backBtnText}>‹ {t('bank_back') || 'Back'}</Text>
         </TouchableOpacity>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>Sign Language Avatar</Text>
+          <Text style={styles.headerTitle}>{t('home_sign_avatar') || 'Sign Language Avatar'}</Text>
           <Text style={styles.headerSub}>3D Gesture Translation</Text>
         </View>
       </View>
