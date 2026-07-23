@@ -68,7 +68,7 @@ class EmergencyAlarmService {
   /**
    * Start the emergency siren and repeating vibration/haptic pattern immediately.
    */
-  public async startAlarm(maxDurationMs: number = 30000): Promise<boolean> {
+  public async startAlarm(maxDurationMs: number = 0): Promise<boolean> {
     if (this.state.alarmActive) {
       console.log('[EmergencyAlarmService] Alarm is already active, ignoring duplicate start.');
       return true;
@@ -100,7 +100,7 @@ class EmergencyAlarmService {
         errorMessage: null,
       });
 
-      // Schedule auto-stop
+      // Schedule auto-stop only if maxDurationMs > 0
       if (maxDurationMs > 0) {
         if (this.autoStopTimer) clearTimeout(this.autoStopTimer);
         this.autoStopTimer = setTimeout(() => {
@@ -315,4 +315,12 @@ class EmergencyAlarmService {
 }
 
 export const emergencyAlarmService = new EmergencyAlarmService();
+
+export const startEmergencyAlarm = (maxDurationMs: number = 0) =>
+  emergencyAlarmService.startAlarm(maxDurationMs);
+export const stopEmergencyAlarm = () =>
+  emergencyAlarmService.stopAlarm();
+export const cleanupEmergencyAlarm = () =>
+  emergencyAlarmService.cleanup();
+
 export default emergencyAlarmService;
