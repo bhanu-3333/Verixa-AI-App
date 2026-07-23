@@ -20,7 +20,8 @@ import SignToTextDetector from '../../components/SignToTextDetector';
 import { recognizeAlphabet, getWordSuggestion } from '../../services/AlphabetRecognizer';
 import { SignService, FrameHands, PredictResponse } from '../../services/SignService';
 import SpeechService from '../../services/SpeechService';
-import { t } from '../../services/LanguageService';
+import { SupportedLanguage } from '../../services/LanguageService';
+import { useLanguage } from '../../components/LanguageProvider';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -58,6 +59,7 @@ const getLocKey = (phrase: string): string => {
 export default function SignToTextScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const isMobile = screenWidth < 768;
+  const { t, language } = useLanguage();
 
   // ── Shared state ──
   const [detected, setDetected] = useState(false);
