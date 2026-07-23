@@ -137,7 +137,7 @@
 
     function setAvatar(avatarName) {
       try {
-        if (!avatarName || avatarName === "null" || avatarName === "undefined") {
+        if (!avatarName || avatarName === "null" || avatarName === "undefined" || String(avatarName).trim() === "") {
           console.warn("setAvatar aborted: invalid avatarName:", avatarName);
           return;
         }
