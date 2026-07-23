@@ -3,7 +3,7 @@
  * Centralized accessibility module for PwDs to discover verified government schemes.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,14 +18,13 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { SchemeService, Scheme } from '../../services/SchemeService';
-import { t, getLanguage, setLanguage, SupportedLanguage } from '../../services/LanguageService';
+import { SupportedLanguage } from '../../services/LanguageService';
+import { useLanguage } from '../../components/LanguageProvider';
 
 export default function SchemesHomeScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const isMobile = screenWidth < 768;
-
-  // Language state
-  const [lang, setLangState] = useState<string>(getLanguage());
+  const { language, setLanguage: setContextLang, t } = useLanguage();
 
   // Data state
   const [schemes, setSchemes] = useState<Scheme[]>([]);
@@ -34,19 +33,13 @@ export default function SchemesHomeScreen() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Filters & Tabs
-  const [activeTab, setActiveTab] = useState<'all' | 'saved' | 'finder'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'saved'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
 
   // Bookmarks
   const [savedIds, setSavedIds] = useState<string[]>([]);
-
-  // "Find Schemes for Me" questionnaire state
-  const [finderAgeGroup, setFinderAgeGroup] = useState<string>('all');
-  const [finderStatus, setFinderStatus] = useState<string>('all');
-  const [finderLevel, setFinderLevel] = useState<string>('all');
-  const [finderDisability, setFinderDisability] = useState<string>('all');
 
   // Load schemes from backend
   const fetchSchemes = useCallback(async () => {
@@ -57,7 +50,7 @@ export default function SchemesHomeScreen() {
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
         government_level: selectedLevel !== 'all' ? selectedLevel : undefined,
         search: searchQuery.trim() || undefined,
-        language: lang,
+        language,
       });
       setSchemes(data);
     } catch (err: any) {
@@ -67,7 +60,7 @@ export default function SchemesHomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedCategory, selectedLevel, searchQuery, lang]);
+  }, [selectedCategory, selectedLevel, searchQuery, language, t]);
 
   // Load saved bookmark IDs
   const fetchSavedIds = useCallback(async () => {
@@ -87,8 +80,7 @@ export default function SchemesHomeScreen() {
   };
 
   const handleLanguageToggle = async (newLang: SupportedLanguage) => {
-    await setLanguage(newLang);
-    setLangState(newLang);
+    await setContextLang(newLang);
   };
 
   const handleToggleBookmark = async (schemeId: string, e?: any) => {
@@ -106,7 +98,7 @@ export default function SchemesHomeScreen() {
   };
 
   // Categories definition
-  const categories = [
+  const categories = useMemo(() => [
     { key: 'all', label: t('schemes_cat_all') },
     { key: 'certification', label: t('schemes_cat_certification') },
     { key: 'assistive_devices', label: t('schemes_cat_assistive_devices') },
@@ -115,17 +107,17 @@ export default function SchemesHomeScreen() {
     { key: 'employment', label: t('schemes_cat_employment') },
     { key: 'social_welfare', label: t('schemes_cat_social_welfare') },
     { key: 'travel', label: t('schemes_cat_travel') },
-  ];
+  ], [t]);
 
   // Helper for localized text fields
   const getLoc = (locObj?: { en: string; ta: string }): string => {
     if (!locObj) return '';
-    return lang === 'ta' ? locObj.ta || locObj.en : locObj.en;
+    return language === SupportedLanguage.TA ? locObj.ta || locObj.en : locObj.en;
   };
 
   const getLocList = (locList?: { en: string[]; ta: string[] }): string[] => {
     if (!locList) return [];
-    return lang === 'ta' ? locList.ta || locList.en : locList.en;
+    return language === SupportedLanguage.TA ? locList.ta || locList.en : locList.en;
   };
 
   // Compute filtered schemes for display
@@ -134,23 +126,6 @@ export default function SchemesHomeScreen() {
 
     if (activeTab === 'saved') {
       list = list.filter((s) => savedIds.includes(s.id));
-    } else if (activeTab === 'finder') {
-      // Eligibility questionnaire filter logic
-      list = list.filter((s) => {
-        if (finderLevel !== 'all' && s.governmentLevel !== finderLevel) return false;
-
-        if (finderStatus === 'student' && s.category !== 'education' && s.category !== 'certification') {
-          return false;
-        }
-
-        if (finderDisability !== 'all') {
-          const disabilities = getLocList(s.applicableDisabilities).join(' ').toLowerCase();
-          if (finderDisability === 'hearing' && !disabilities.includes('hearing') && !disabilities.includes('deaf') && !disabilities.includes('செவி')) {
-            return false;
-          }
-        }
-        return true;
-      });
     }
 
     return list;
@@ -176,16 +151,16 @@ export default function SchemesHomeScreen() {
           {/* Language Switcher */}
           <View style={styles.langToggle}>
             <TouchableOpacity
-              style={[styles.langBtn, lang === 'en' && styles.langBtnActive]}
+              style={[styles.langBtn, language === SupportedLanguage.EN && styles.langBtnActive]}
               onPress={() => handleLanguageToggle(SupportedLanguage.EN)}
             >
-              <Text style={[styles.langBtnText, lang === 'en' && styles.langBtnTextActive]}>EN</Text>
+              <Text style={[styles.langBtnText, language === SupportedLanguage.EN && styles.langBtnTextActive]}>EN</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.langBtn, lang === 'ta' && styles.langBtnActive]}
+              style={[styles.langBtn, language === SupportedLanguage.TA && styles.langBtnActive]}
               onPress={() => handleLanguageToggle(SupportedLanguage.TA)}
             >
-              <Text style={[styles.langBtnText, lang === 'ta' && styles.langBtnTextActive]}>தமிழ்</Text>
+              <Text style={[styles.langBtnText, language === SupportedLanguage.TA && styles.langBtnTextActive]}>தமிழ்</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -206,7 +181,7 @@ export default function SchemesHomeScreen() {
           )}
         </View>
 
-        {/* ── Tabs (All / Saved / Finder) ── */}
+        {/* ── Tabs (All / Saved) ── */}
         <View style={styles.tabsRow}>
           <TouchableOpacity
             style={[styles.tabBtn, activeTab === 'all' && styles.tabBtnActive]}
@@ -223,15 +198,6 @@ export default function SchemesHomeScreen() {
           >
             <Text style={[styles.tabBtnText, activeTab === 'saved' && styles.tabBtnTextActive]}>
               ♥ {t('schemes_tab_saved')} ({savedIds.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'finder' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('finder')}
-          >
-            <Text style={[styles.tabBtnText, activeTab === 'finder' && styles.tabBtnTextActive]}>
-              🎯 {t('schemes_tab_finder')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -293,56 +259,7 @@ export default function SchemesHomeScreen() {
           </View>
         )}
 
-        {/* ── Find Schemes for Me Wizard ── */}
-        {activeTab === 'finder' && (
-          <View style={styles.finderBox}>
-            <Text style={styles.finderTitle}>{t('schemes_finder_title')}</Text>
-            <Text style={styles.finderDesc}>{t('schemes_finder_desc')}</Text>
 
-            <View style={styles.finderFilterGroup}>
-              <Text style={styles.finderLabel}>Government Level:</Text>
-              <View style={styles.finderOptionRow}>
-                {[
-                  { key: 'all', label: 'All' },
-                  { key: 'central', label: 'Central Govt' },
-                  { key: 'state_tn', label: 'Tamil Nadu Govt' },
-                ].map((opt) => (
-                  <TouchableOpacity
-                    key={opt.key}
-                    style={[styles.finderOptionBtn, finderLevel === opt.key && styles.finderOptionBtnActive]}
-                    onPress={() => setFinderLevel(opt.key)}
-                  >
-                    <Text style={[styles.finderOptionText, finderLevel === opt.key && styles.finderOptionTextActive]}>
-                      {opt.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.finderLabel}>Status / Focus:</Text>
-              <View style={styles.finderOptionRow}>
-                {[
-                  { key: 'all', label: 'All Statuses' },
-                  { key: 'student', label: 'Student / Scholarships' },
-                ].map((opt) => (
-                  <TouchableOpacity
-                    key={opt.key}
-                    style={[styles.finderOptionBtn, finderStatus === opt.key && styles.finderOptionBtnActive]}
-                    onPress={() => setFinderStatus(opt.key)}
-                  >
-                    <Text style={[styles.finderOptionText, finderStatus === opt.key && styles.finderOptionTextActive]}>
-                      {opt.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.finderNotice}>
-              <Text style={styles.finderNoticeText}>💡 {t('schemes_finder_result_notice')}</Text>
-            </View>
-          </View>
-        )}
 
         {/* ── Content List ── */}
         {loading && !refreshing ? (
@@ -586,67 +503,7 @@ const styles = StyleSheet.create({
   levelBtnTextActive: {
     color: '#ffffff',
   },
-  finderBox: {
-    backgroundColor: '#121226',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 230, 118, 0.3)',
-  },
-  finderTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#00E676',
-    marginBottom: 4,
-  },
-  finderDesc: {
-    fontSize: 12,
-    color: '#a0aec0',
-    marginBottom: 12,
-  },
-  finderFilterGroup: {
-    gap: 8,
-  },
-  finderLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginTop: 4,
-  },
-  finderOptionRow: {
-    flexDirection: 'row',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  finderOptionBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  finderOptionBtnActive: {
-    backgroundColor: '#00E676',
-  },
-  finderOptionText: {
-    fontSize: 11,
-    color: '#a0aec0',
-  },
-  finderOptionTextActive: {
-    color: '#0a0a16',
-    fontWeight: '700',
-  },
-  finderNotice: {
-    marginTop: 12,
-    backgroundColor: 'rgba(0, 230, 118, 0.08)',
-    padding: 10,
-    borderRadius: 8,
-  },
-  finderNoticeText: {
-    fontSize: 11,
-    color: '#00E676',
-    lineHeight: 16,
-  },
+
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
