@@ -1,8 +1,6 @@
 // verixa-app/src/config/api.ts
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-
-
 export const API_BASE_URL = (() => {
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, '');
