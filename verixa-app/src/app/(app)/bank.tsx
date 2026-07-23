@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,8 @@ import { SignLanguageAvatar, SignLanguageAvatarRef } from '../../components/Sign
 import { translateTextToSigml } from '../../services/avatarService';
 import { startBankSession, sendBankMessage, completeBankSession, ChatMessage } from '../../services/bankService';
 import { getUser } from '../../utils/storage';
-import { getLanguage, SupportedLanguage, t } from '../../services/LanguageService';
+import { SupportedLanguage } from '../../services/LanguageService';
+import { useLanguage } from '../../components/LanguageProvider';
 import SignToTextDetector from '../../components/SignToTextDetector';
 import { recognizeAlphabet, getWordSuggestion } from '../../services/AlphabetRecognizer';
 import { recognizeGesture, getSupportedGestures, type GestureResult } from '../../services/GestureRecognizer';
@@ -106,6 +107,7 @@ const stepStyles = StyleSheet.create({
 export default function BankScreen() {
   const avatarRef = useRef<SignLanguageAvatarRef>(null);
   const { width: screenWidth } = useWindowDimensions();
+  const { language, t } = useLanguage();
 
   // Flow step state: 1 (Select Service), 2 (Summary Card), 3 (Form), 4 (AI Chat & Avatar), 5 (Success Screen)
   const [step, setStep] = useState(1);
@@ -143,41 +145,40 @@ export default function BankScreen() {
     getUser<any>().then((u) => setUser(u));
   }, []);
 
-  const currentLang = getLanguage();
-  const isTamil = currentLang === SupportedLanguage.TA;
+  const isTamil = language === SupportedLanguage.TA;
 
   // Step 1 Options
-  const SERVICES = [
-    { id: 'Create Account', label: isTamil ? t('bank_service_create_account') : 'Create New Account', icon: '📝' },
-    { id: 'Fund Transfer', label: isTamil ? t('bank_service_fund_transfer') : 'Fund Transfer', icon: '💸' },
-    { id: 'Block ATM', label: isTamil ? t('bank_service_block_atm') : 'Block ATM Card', icon: '💳' },
-  ];
+  const SERVICES = useMemo(() => [
+    { id: 'Create Account', label: t('bank_service_create_account') || 'Create New Account', icon: '📝' },
+    { id: 'Fund Transfer', label: t('bank_service_fund_transfer') || 'Fund Transfer', icon: '💸' },
+    { id: 'Block ATM', label: t('bank_service_block_atm') || 'Block ATM Card', icon: '💳' },
+  ], [language, t]);
 
   // Step 2 Summary info mappings
   const getRequiredDocs = (srv: string) => {
     switch (srv) {
-      case 'Create Account': return isTamil ? t('bank_docs_create_account') : 'Aadhaar Card, PAN Card, Passport Photo, Address Proof';
-      case 'Fund Transfer': return isTamil ? t('bank_docs_fund_transfer') : 'Beneficiary Details, Account Number, IFSC Code';
-      case 'Block ATM': return isTamil ? t('bank_docs_block_atm') : 'ATM Card Number, Registered Mobile Number';
+      case 'Create Account': return t('bank_docs_create_account') || 'Aadhaar Card, PAN Card, Passport Photo, Address Proof';
+      case 'Fund Transfer': return t('bank_docs_fund_transfer') || 'Beneficiary Details, Account Number, IFSC Code';
+      case 'Block ATM': return t('bank_docs_block_atm') || 'ATM Card Number, Registered Mobile Number';
       default: return '';
     }
   };
 
   const getEstTime = (srv: string) => {
     switch (srv) {
-      case 'Create Account': return isTamil ? t('bank_time_create_account') : '30–45 minutes';
-      case 'Fund Transfer': return isTamil ? t('bank_time_fund_transfer') : '5–10 minutes';
-      case 'Block ATM': return isTamil ? t('bank_time_block_atm') : '5 minutes';
+      case 'Create Account': return t('bank_time_create_account') || '30–45 minutes';
+      case 'Fund Transfer': return t('bank_time_fund_transfer') || '5–10 minutes';
+      case 'Block ATM': return t('bank_time_block_atm') || '5 minutes';
       default: return '';
     }
   };
 
   const getGreetingMessage = (srv: string) => {
     switch (srv) {
-      case 'Create Account': return isTamil ? t('bank_greeting_create_account') : 'Welcome! I will help you open a new bank account. Please share your details and I will guide you through the process.';
-      case 'Fund Transfer': return isTamil ? t('bank_greeting_fund_transfer') : 'Welcome! I will assist you with the fund transfer. Please confirm the beneficiary and amount details.';
-      case 'Block ATM': return isTamil ? t('bank_greeting_block_atm') : 'Hello! I will help you block your ATM card immediately. Please provide your card details.';
-      default: return isTamil ? t('bank_greeting_other') : 'Hello! I am your banking assistant. How can I help you today?';
+      case 'Create Account': return t('bank_greeting_create_account') || 'Welcome! I will help you open a new bank account.';
+      case 'Fund Transfer': return t('bank_greeting_fund_transfer') || 'Welcome! I will assist you with the fund transfer.';
+      case 'Block ATM': return t('bank_greeting_block_atm') || 'Hello! I will help you block your ATM card immediately.';
+      default: return t('bank_greeting_other') || 'Hello! I am your banking assistant. How can I help you today?';
     }
   };
 
@@ -190,16 +191,16 @@ export default function BankScreen() {
     if (selectedService === 'Create Account') {
       return (
         <View style={styles.formContainer}>
-          <Text style={styles.formLabel}>{isTamil ? t('bank_form_full_name') : 'Full Name'}</Text>
+          <Text style={styles.formLabel}>{t('bank_form_full_name') || 'Full Name'}</Text>
           <TextInput
             style={styles.textInput}
             value={formFields.name || ''}
             onChangeText={(t) => handleFieldChange('name', t)}
-            placeholder={isTamil ? 'அவதார் பெயர்...' : 'Enter your name...'}
+            placeholder={t('bank_form_full_name') || 'Enter your name...'}
             placeholderTextColor="#64748b"
           />
 
-          <Text style={styles.formLabel}>{isTamil ? t('bank_form_aadhaar') : 'Aadhaar Number'}</Text>
+          <Text style={styles.formLabel}>{t('bank_form_aadhaar') || 'Aadhaar Number'}</Text>
           <TextInput
             style={styles.textInput}
             value={formFields.aadhaar || ''}
@@ -210,7 +211,7 @@ export default function BankScreen() {
             maxLength={12}
           />
 
-          <Text style={styles.formLabel}>{isTamil ? t('bank_form_pan') : 'PAN Number'}</Text>
+          <Text style={styles.formLabel}>{t('bank_form_pan') || 'PAN Number'}</Text>
           <TextInput
             style={styles.textInput}
             value={formFields.pan || ''}
@@ -221,7 +222,7 @@ export default function BankScreen() {
             maxLength={10}
           />
 
-          <Text style={styles.formLabel}>{isTamil ? t('bank_form_mobile') : 'Mobile Number'}</Text>
+          <Text style={styles.formLabel}>{t('bank_form_mobile') || 'Mobile Number'}</Text>
           <TextInput
             style={styles.textInput}
             value={formFields.mobile || ''}
@@ -236,7 +237,7 @@ export default function BankScreen() {
     } else if (selectedService === 'Fund Transfer') {
       return (
         <View style={styles.formContainer}>
-          <Text style={styles.formLabel}>{isTamil ? t('bank_form_beneficiary') : 'Beneficiary Name'}</Text>
+          <Text style={styles.formLabel}>{t('bank_form_beneficiary') || 'Beneficiary Name'}</Text>
           <TextInput
             style={styles.textInput}
             value={formFields.beneficiary || ''}
@@ -245,7 +246,7 @@ export default function BankScreen() {
             placeholderTextColor="#64748b"
           />
 
-          <Text style={styles.formLabel}>{isTamil ? t('bank_form_account_number') : 'Account Number'}</Text>
+          <Text style={styles.formLabel}>{t('bank_form_account_number') || 'Account Number'}</Text>
           <TextInput
             style={styles.textInput}
             value={formFields.account_number || ''}
@@ -255,7 +256,7 @@ export default function BankScreen() {
             keyboardType="number-pad"
           />
 
-          <Text style={styles.formLabel}>{isTamil ? t('bank_form_ifsc') : 'IFSC Code'}</Text>
+          <Text style={styles.formLabel}>{t('bank_form_ifsc') || 'IFSC Code'}</Text>
           <TextInput
             style={styles.textInput}
             value={formFields.ifsc || ''}
@@ -265,7 +266,7 @@ export default function BankScreen() {
             autoCapitalize="characters"
           />
 
-          <Text style={styles.formLabel}>{isTamil ? t('bank_form_amount') : 'Amount'}</Text>
+          <Text style={styles.formLabel}>{t('bank_form_amount') || 'Amount'}</Text>
           <TextInput
             style={styles.textInput}
             value={formFields.amount || ''}
@@ -279,7 +280,7 @@ export default function BankScreen() {
     } else if (selectedService === 'Block ATM') {
       return (
         <View style={styles.formContainer}>
-          <Text style={styles.formLabel}>{isTamil ? t('bank_form_card_number') : 'ATM Card Number'}</Text>
+          <Text style={styles.formLabel}>{t('bank_form_card_number') || 'ATM Card Number'}</Text>
           <TextInput
             style={styles.textInput}
             value={formFields.card_number || ''}
@@ -290,7 +291,7 @@ export default function BankScreen() {
             maxLength={16}
           />
 
-          <Text style={styles.formLabel}>{isTamil ? t('bank_form_reason') : 'Reason'}</Text>
+          <Text style={styles.formLabel}>{t('bank_form_reason') || 'Reason'}</Text>
           <TextInput
             style={styles.textInput}
             value={formFields.reason || ''}
@@ -334,7 +335,7 @@ export default function BankScreen() {
         user_id: user?.id || 'guest_user',
         bank_name: 'Verixa Smart Bank',
         service_type: selectedService,
-        language: currentLang,
+        language: language,
       };
       const res = await startBankSession(payload);
       setSessionId(res.session_id);
@@ -386,7 +387,7 @@ export default function BankScreen() {
         user_id: user?.id || 'guest_user',
         session_id: sessionId,
         message: userMsg.content,
-        language: currentLang,
+        language: language,
       };
       const res = await sendBankMessage(payload);
 
@@ -529,7 +530,7 @@ export default function BankScreen() {
       service_type: selectedService,
       form_data: formFields,
       chat_history: chatMessages,
-      language: currentLang,
+      language: language,
     };
 
     try {
