@@ -1,3 +1,6 @@
+// src/app/(app)/hospital.tsx
+// Hospital Mode — Symptom selection, Body Pain Map, Medical Summary & 3-Mode Communication
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
@@ -11,14 +14,16 @@ import {
   Platform,
   SafeAreaView,
   Animated,
+  useWindowDimensions,
 } from 'react-native';
-import { router } from 'expo-router';
-import SpeechService from '../../services/SpeechService';
+import { useRouter } from 'expo-router';
+import { useLanguage } from '../../components/LanguageProvider';
 import { SignLanguageAvatar, SignLanguageAvatarRef } from '../../components/SignLanguageAvatar';
+import SignToTextDetector from '../../components/SignToTextDetector';
 import { translateTextToSigml } from '../../services/avatarService';
 import { startHospitalSession, sendHospitalMessage, SymptomPayload } from '../../services/hospitalService';
+import SpeechService from '../../services/SpeechService';
 import { getUser } from '../../utils/storage';
-import { getLanguage, SupportedLanguage } from '../../services/LanguageService';
 
 // Standard Symptoms list for Screen 1
 const SYMPTOMS_LIST = [
@@ -35,7 +40,21 @@ const SYMPTOMS_LIST = [
   'Other',
 ];
 
-// Emojis and descriptions for Pain Intensity
+const SYMPTOM_KEYS: Record<string, string> = {
+  'Fever': 'symptom_fever',
+  'Headache': 'symptom_headache',
+  'Dizziness': 'symptom_dizziness',
+  'Vomiting': 'symptom_vomiting',
+  'Chest Pain': 'symptom_chest_pain',
+  'Stomach Pain': 'symptom_stomach_pain',
+  'Weakness': 'symptom_weakness',
+  'Difficulty Breathing': 'symptom_difficulty_breathing',
+  'Cough': 'symptom_cough',
+  'Nausea': 'symptom_nausea',
+  'Other': 'symptom_other',
+};
+
+// Pain Intensity Levels (0-10)
 const PAIN_LEVELS = [
   { level: 0, emoji: '😊', label: 'No Pain' },
   { level: 1, emoji: '🙂', label: 'Mild' },
@@ -50,105 +69,99 @@ const PAIN_LEVELS = [
   { level: 10, emoji: '😭', label: 'Worst' },
 ];
 
-// Front Body Hotspots coordinates (in percentages)
-const FRONT_HOTSPOTS = [
-  { id: 'f_head', name: 'Head', x: '50%', y: '4.5%' },
-  { id: 'f_face', name: 'Face', x: '50%', y: '8.5%' },
-  { id: 'f_neck', name: 'Neck', x: '50%', y: '14%' },
-  { id: 'f_chest', name: 'Chest', x: '50%', y: '22%' },
-  { id: 'f_heart', name: 'Heart', x: '44%', y: '22%' },
-  { id: 'f_stomach', name: 'Stomach', x: '44%', y: '30%' },
-  { id: 'f_abdomen', name: 'Abdomen', x: '50%', y: '34%' },
-  { id: 'f_pelvis', name: 'Pelvis', x: '50%', y: '42%' },
-  { id: 'f_r_arm', name: 'Right Arm', x: '24%', y: '31%' },
-  { id: 'f_l_arm', name: 'Left Arm', x: '76%', y: '31%' },
-  { id: 'f_r_hand', name: 'Right Hand', x: '16%', y: '48%' },
-  { id: 'f_l_hand', name: 'Left Hand', x: '84%', y: '48%' },
-  { id: 'f_r_leg', name: 'Right Leg', x: '39%', y: '68%' },
-  { id: 'f_l_leg', name: 'Left Leg', x: '61%', y: '68%' },
-  { id: 'f_r_foot', name: 'Right Foot', x: '36%', y: '94%' },
-  { id: 'f_l_foot', name: 'Left Foot', x: '64%', y: '94%' },
+export interface HotspotPoint {
+  id: string;
+  labelKey: string;
+  defaultName: string;
+  x: number;
+  y: number;
+}
+
+// Normalized FRONT Body Map percentage coordinates (x%, y%)
+const FRONT_HOTSPOTS: HotspotPoint[] = [
+  // Head / Neck
+  { id: 'f_head', labelKey: 'part_head', defaultName: 'Head', x: 50, y: 4 },
+  { id: 'f_face', labelKey: 'part_face', defaultName: 'Face', x: 50, y: 8.5 },
+  { id: 'f_neck', labelKey: 'part_neck', defaultName: 'Neck', x: 50, y: 13.5 },
+  // Upper Body
+  { id: 'f_l_shoulder', labelKey: 'part_left_shoulder', defaultName: 'Left Shoulder', x: 31, y: 19 },
+  { id: 'f_r_shoulder', labelKey: 'part_right_shoulder', defaultName: 'Right Shoulder', x: 69, y: 19 },
+  { id: 'f_chest', labelKey: 'part_chest', defaultName: 'Chest', x: 50, y: 22 },
+  { id: 'f_u_abdomen', labelKey: 'part_upper_abdomen', defaultName: 'Upper Abdomen', x: 50, y: 28 },
+  { id: 'f_m_abdomen', labelKey: 'part_middle_abdomen', defaultName: 'Middle Abdomen', x: 50, y: 34 },
+  { id: 'f_l_abdomen', labelKey: 'part_lower_abdomen', defaultName: 'Lower Abdomen', x: 50, y: 40 },
+  // Arms
+  { id: 'f_l_u_arm', labelKey: 'part_left_upper_arm', defaultName: 'Left Upper Arm', x: 23, y: 25 },
+  { id: 'f_r_u_arm', labelKey: 'part_right_upper_arm', defaultName: 'Right Upper Arm', x: 77, y: 25 },
+  { id: 'f_l_elbow', labelKey: 'part_left_elbow', defaultName: 'Left Elbow', x: 20, y: 33 },
+  { id: 'f_r_elbow', labelKey: 'part_right_elbow', defaultName: 'Right Elbow', x: 80, y: 33 },
+  { id: 'f_l_wrist', labelKey: 'part_left_wrist', defaultName: 'Left Wrist', x: 16, y: 43 },
+  { id: 'f_r_wrist', labelKey: 'part_right_wrist', defaultName: 'Right Wrist', x: 84, y: 43 },
+  // Lower Body
+  { id: 'f_pelvis', labelKey: 'part_pelvis', defaultName: 'Pelvis / Hip', x: 50, y: 46 },
+  { id: 'f_l_thigh', labelKey: 'part_left_thigh', defaultName: 'Left Thigh', x: 40, y: 55 },
+  { id: 'f_r_thigh', labelKey: 'part_right_thigh', defaultName: 'Right Thigh', x: 60, y: 55 },
+  { id: 'f_l_knee', labelKey: 'part_left_knee', defaultName: 'Left Knee', x: 40, y: 69 },
+  { id: 'f_r_knee', labelKey: 'part_right_knee', defaultName: 'Right Knee', x: 60, y: 69 },
+  { id: 'f_l_ankle', labelKey: 'part_left_ankle', defaultName: 'Left Ankle', x: 38, y: 88 },
+  { id: 'f_r_ankle', labelKey: 'part_right_ankle', defaultName: 'Right Ankle', x: 62, y: 88 },
 ];
 
-// Back Body Hotspots coordinates (in percentages)
-const BACK_HOTSPOTS = [
-  { id: 'b_head', name: 'Head', x: '50%', y: '4.5%' },
-  { id: 'b_neck', name: 'Neck', x: '50%', y: '14%' },
-  { id: 'b_u_back', name: 'Upper Back', x: '50%', y: '21%' },
-  { id: 'b_m_back', name: 'Middle Back', x: '50%', y: '30%' },
-  { id: 'b_l_back', name: 'Lower Back', x: '50%', y: '40%' },
-  { id: 'b_spine', name: 'Spine', x: '50%', y: '31%' },
-  { id: 'b_l_shoulder', name: 'Left Shoulder', x: '34%', y: '18%' },
-  { id: 'b_r_shoulder', name: 'Right Shoulder', x: '66%', y: '18%' },
-  { id: 'b_l_arm', name: 'Left Arm', x: '23%', y: '32%' },
-  { id: 'b_r_arm', name: 'Right Arm', x: '77%', y: '32%' },
-  { id: 'b_l_leg', name: 'Left Leg', x: '39%', y: '68%' },
-  { id: 'b_r_leg', name: 'Right Leg', x: '61%', y: '68%' },
-  { id: 'b_l_foot', name: 'Left Foot', x: '36%', y: '94%' },
-  { id: 'b_r_foot', name: 'Right Foot', x: '64%', y: '94%' },
+// Normalized BACK Body Map percentage coordinates (x%, y%)
+const BACK_HOTSPOTS: HotspotPoint[] = [
+  // Head / Neck
+  { id: 'b_head', labelKey: 'part_back_of_head', defaultName: 'Back of Head', x: 50, y: 4 },
+  { id: 'b_neck', labelKey: 'part_neck', defaultName: 'Neck', x: 50, y: 13.5 },
+  // Shoulders & Back
+  { id: 'b_l_shoulder', labelKey: 'part_left_shoulder', defaultName: 'Left Shoulder', x: 31, y: 19 },
+  { id: 'b_r_shoulder', labelKey: 'part_right_shoulder', defaultName: 'Right Shoulder', x: 69, y: 19 },
+  { id: 'b_u_back', labelKey: 'part_upper_back', defaultName: 'Upper Back', x: 50, y: 22 },
+  { id: 'b_m_back', labelKey: 'part_middle_back', defaultName: 'Middle Back', x: 50, y: 30 },
+  { id: 'b_l_back', labelKey: 'part_lower_back', defaultName: 'Lower Back', x: 50, y: 38 },
+  // Arms
+  { id: 'b_l_u_arm', labelKey: 'part_left_upper_arm', defaultName: 'Left Upper Arm', x: 23, y: 25 },
+  { id: 'b_r_u_arm', labelKey: 'part_right_upper_arm', defaultName: 'Right Upper Arm', x: 77, y: 25 },
+  { id: 'b_l_elbow', labelKey: 'part_left_elbow', defaultName: 'Left Elbow', x: 20, y: 33 },
+  { id: 'b_r_elbow', labelKey: 'part_right_elbow', defaultName: 'Right Elbow', x: 80, y: 33 },
+  { id: 'b_l_wrist', labelKey: 'part_left_wrist', defaultName: 'Left Wrist', x: 16, y: 43 },
+  { id: 'b_r_wrist', labelKey: 'part_right_wrist', defaultName: 'Right Wrist', x: 84, y: 43 },
+  // Hips & Legs
+  { id: 'b_l_hip', labelKey: 'part_left_hip', defaultName: 'Left Hip', x: 41, y: 46 },
+  { id: 'b_r_hip', labelKey: 'part_right_hip', defaultName: 'Right Hip', x: 59, y: 46 },
+  { id: 'b_l_thigh', labelKey: 'part_left_back_thigh', defaultName: 'Left Back Thigh', x: 40, y: 56 },
+  { id: 'b_r_thigh', labelKey: 'part_right_back_thigh', defaultName: 'Right Back Thigh', x: 60, y: 56 },
+  { id: 'b_l_knee', labelKey: 'part_left_back_knee', defaultName: 'Left Back Knee', x: 40, y: 69 },
+  { id: 'b_r_knee', labelKey: 'part_right_back_knee', defaultName: 'Right Back Knee', x: 60, y: 69 },
+  { id: 'b_l_calf', labelKey: 'part_left_calf', defaultName: 'Left Calf', x: 39, y: 78 },
+  { id: 'b_r_calf', labelKey: 'part_right_calf', defaultName: 'Right Calf', x: 61, y: 78 },
+  { id: 'b_l_ankle', labelKey: 'part_left_ankle', defaultName: 'Left Ankle', x: 38, y: 88 },
+  { id: 'b_r_ankle', labelKey: 'part_right_ankle', defaultName: 'Right Ankle', x: 62, y: 88 },
 ];
-
-// Bilingual translations for speech & display
-const symptomTranslations: Record<string, string> = {
-  'Fever': 'காய்ச்சல் (Fever)',
-  'Headache': 'தலைவலி (Headache)',
-  'Dizziness': 'தலைச்சுற்றல் (Dizziness)',
-  'Vomiting': 'வாந்தி (Vomiting)',
-  'Chest Pain': 'நெஞ்சு வலி (Chest Pain)',
-  'Stomach Pain': 'வயிற்று வலி (Stomach Pain)',
-  'Weakness': 'பலவீனம் (Weakness)',
-  'Difficulty Breathing': 'மூச்சுத்திணறல் (Difficulty Breathing)',
-  'Cough': 'இருமல் (Cough)',
-  'Nausea': 'குமட்டல் (Nausea)',
-  'Other': 'பிற (Other)',
-};
-
-const partTranslations: Record<string, string> = {
-  'Head': 'தலை (Head)',
-  'Face': 'முகம் (Face)',
-  'Neck': 'கழுத்து (Neck)',
-  'Chest': 'நெஞ்சு (Chest)',
-  'Heart': 'இதயம் (Heart)',
-  'Stomach': 'வயிறு (Stomach)',
-  'Abdomen': 'அடிவயிறு (Abdomen)',
-  'Pelvis': 'இடுப்பு (Pelvis)',
-  'Left Arm': 'இடது கை (Left Arm)',
-  'Right Arm': 'வலது கை (Right Arm)',
-  'Left Hand': 'இடது கை (Left Hand)',
-  'Right Hand': 'வலது கை (Right Hand)',
-  'Left Leg': 'இடது கால் (Left Leg)',
-  'Right Leg': 'வலது கால் (Right Leg)',
-  'Left Foot': 'இடது பாதம் (Left Foot)',
-  'Right Foot': 'வலது பாதம் (Right Foot)',
-  'Upper Back': 'முதுகு மேல் பகுதி (Upper Back)',
-  'Middle Back': 'முதுகு நடு பகுதி (Middle Back)',
-  'Lower Back': 'முதுகு கீழ் பகுதி (Lower Back)',
-  'Spine': 'முதுகுத்தண்டு (Spine)',
-  'Left Shoulder': 'இடது தோள் (Left Shoulder)',
-  'Right Shoulder': 'வலது தோள் (Right Shoulder)',
-};
 
 const C = {
-  primary: '#00FFCC', // Teal accent
-  bg: '#0f172a',      // Dark background
-  cardBg: '#1e293b',  // Card background
-  text: '#f8fafc',    // Text color
-  muted: '#94a3b8',   // Muted gray text
-  danger: '#ef4444',  // Glowing red marker / error
-  border: '#334155',  // Border
+  primary: '#00FFCC',
+  bg: '#0f172a',
+  cardBg: '#1e293b',
+  text: '#f8fafc',
+  muted: '#94a3b8',
+  danger: '#ef4444',
+  border: '#334155',
 };
 
-// ── Animated Hotspot with glowing pulse ring ──────────────────────────────
+// ── Animated Hotspot Component ─────────────────────────────────────────────
 function AnimatedHotspot({
+  point,
   selected,
   onPress,
-  style,
+  label,
 }: {
+  point: HotspotPoint;
   selected: boolean;
   onPress: () => void;
-  style: any;
+  label: string;
 }) {
   const pulse = useRef(new Animated.Value(1)).current;
+  const [showTooltip, setShowTooltip] = useState(false);
 
   useEffect(() => {
     if (selected) {
@@ -163,16 +176,21 @@ function AnimatedHotspot({
     } else {
       pulse.setValue(1);
     }
-  }, [selected]);
+  }, [selected, pulse]);
 
   return (
     <TouchableOpacity
       style={[
         styles.hotspot,
-        style,
+        { left: `${point.x}%` as any, top: `${point.y}%` as any },
         selected && styles.hotspotSelected,
       ]}
-      onPress={onPress}
+      onPress={() => {
+        setShowTooltip(true);
+        setTimeout(() => setShowTooltip(false), 2000);
+        onPress();
+      }}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       activeOpacity={0.7}
     >
       {selected && (
@@ -183,11 +201,16 @@ function AnimatedHotspot({
           ]}
         />
       )}
+      {showTooltip && (
+        <View style={styles.tooltipBox}>
+          <Text style={styles.tooltipText}>{label}</Text>
+        </View>
+      )}
     </TouchableOpacity>
   );
 }
 
-// ── Step progress indicator ───────────────────────────────────────────────
+// ── Step Indicator Component ─────────────────────────────────────────────
 function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
     <View style={stepStyles.container}>
@@ -256,48 +279,74 @@ const stepStyles = StyleSheet.create({
 });
 
 export default function HospitalScreen() {
+  const router = useRouter();
+  const { t } = useLanguage();
+  const { width: screenWidth } = useWindowDimensions();
+  const isDesktop = screenWidth >= 768;
   const avatarRef = useRef<SignLanguageAvatarRef>(null);
 
-  // Flow step state: 1 (Symptoms), 2 (Body Map, Pain & Notes), 3 (Report & Comm)
+  // Flow step: 1 (Symptoms), 2 (Body Map & Pain Intensity), 3 (Medical Summary & 3-Mode Comm)
   const [step, setStep] = useState(1);
   const [user, setUser] = useState<any>(null);
 
-  // Symptoms Selection state
+  // Step 1: Symptoms Selection
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
   const [otherSymptom, setOtherSymptom] = useState('');
 
-  // Body Map Selection state
+  // Step 2: Body Map Selection (stored as HotspotPoint IDs)
   const [bodyView, setBodyView] = useState<'front' | 'back'>('front');
-  const [selectedBodyParts, setSelectedBodyParts] = useState<string[]>([]);
+  const [selectedPointIds, setSelectedPointIds] = useState<string[]>([]);
 
-  // Pain scale (0-10) and notes
+  // Pain scale (0-10) & Optional Notes
   const [painIntensity, setPainIntensity] = useState<number>(0);
   const [notes, setNotes] = useState('');
 
-  // Submission & API communication states
+  // Step 3: Session & Communication Mode State
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Sign Language Avatar overlay state
-  const [showAvatar, setShowAvatar] = useState(false);
-  const [avatarLoading, setAvatarLoading] = useState(false);
+  // Communication mode: null = choose, 'speak' | 'sign_to_text' | 'text_to_sign'
+  type CommMode = null | 'speak' | 'sign_to_text' | 'text_to_sign';
+  const [commMode, setCommMode] = useState<CommMode>(null);
 
-  // Chat with doctor state
-  const [showChat, setShowChat] = useState(false);
-  const [chatMessages, setChatMessages] = useState<any[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
+  // Mode 1: Speak the Report
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  // Mode 2: Sign Language -> Text / Voice
+  const [recognizedSign, setRecognizedSign] = useState<string | null>(null);
+  const [signRecognizing, setSignRecognizing] = useState(false);
+
+  // Mode 3: Text / Voice -> Sign Language
+  const [avatarMounted, setAvatarMounted] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const [textToSignInput, setTextToSignInput] = useState('');
+  const [sendingToSign, setSendingToSign] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceText, setVoiceText] = useState('');
 
   useEffect(() => {
     getUser<any>().then((u) => setUser(u));
   }, []);
 
-  const currentLang = getLanguage();
-  const isTamil = currentLang === SupportedLanguage.TA;
+  const allHotspots = [...FRONT_HOTSPOTS, ...BACK_HOTSPOTS];
 
-  // Toggle general symptoms select
+  const getHotspotLabel = useCallback(
+    (pointId: string) => {
+      const spot = allHotspots.find((s) => s.id === pointId);
+      if (!spot) return pointId;
+      return t(spot.labelKey) || spot.defaultName;
+    },
+    [allHotspots, t]
+  );
+
+  const getHotspotDefaultName = useCallback(
+    (pointId: string) => {
+      const spot = allHotspots.find((s) => s.id === pointId);
+      return spot ? spot.defaultName : pointId;
+    },
+    [allHotspots]
+  );
+
   const toggleSymptom = (symptom: string) => {
     setSelectedSymptoms((prev) =>
       prev.includes(symptom)
@@ -306,90 +355,53 @@ export default function HospitalScreen() {
     );
   };
 
-  // Toggle body parts select
-  const toggleBodyPart = (part: string) => {
-    setSelectedBodyParts((prev) =>
-      prev.includes(part)
-        ? prev.filter((p) => p !== part)
-        : [...prev, part]
+  const togglePointId = (pointId: string) => {
+    setSelectedPointIds((prev) =>
+      prev.includes(pointId)
+        ? prev.filter((id) => id !== pointId)
+        : [...prev, pointId]
     );
   };
 
-  // Get localized pain descriptor
-  const getPainLevelDesc = (val: number) => {
-    const level = PAIN_LEVELS.find((p) => p.level === val);
-    if (!level) return '';
-    if (isTamil) {
-      switch (level.label) {
-        case 'No Pain': return 'வலியற்றது (0)';
-        case 'Mild': return 'லேசான வலி (1–3)';
-        case 'Moderate': return 'மிதமான வலி (4–6)';
-        case 'Severe': return 'கடுமையான வலி (7–8)';
-        case 'Worst': return 'மிக மோசமான வலி (9–10)';
-      }
-    }
-    return `${level.emoji} ${level.label} (${val})`;
+  const handleClearAllPoints = () => {
+    setSelectedPointIds([]);
   };
 
-  // Formulate textual summaries for report
+  const getPainLevelDesc = (val: number) => {
+    const level = PAIN_LEVELS.find((p) => p.level === val);
+    if (!level) return `${val}`;
+    let label = level.label;
+    if (val === 0) label = t('pain_no_pain') || 'No Pain';
+    else if (val <= 3) label = t('pain_mild') || 'Mild';
+    else if (val <= 6) label = t('pain_moderate') || 'Moderate';
+    else if (val <= 8) label = t('pain_severe') || 'Severe';
+    else label = t('pain_worst') || 'Worst';
+    return `${level.emoji} ${label} (${val})`;
+  };
+
   const getSymptomsSummary = () => {
     const list = selectedSymptoms.map((s) => {
       if (s === 'Other' && otherSymptom.trim()) {
         return otherSymptom.trim();
       }
-      return isTamil ? symptomTranslations[s] || s : s;
+      return t(SYMPTOM_KEYS[s] || s) || s;
     });
-    return list.length > 0 ? list.join(', ') : (isTamil ? 'அறிகுறிகள் எதுவும் தேர்ந்தெடுக்கப்படவில்லை' : 'None selected');
+    return list.length > 0 ? list.join(', ') : (t('hospital_none_selected') || 'None selected');
   };
 
   const getLocationsSummary = () => {
-    const list = selectedBodyParts.map((p) => (isTamil ? partTranslations[p] || p : p));
-    return list.length > 0 ? list.join(', ') : (isTamil ? 'உடல் பாகங்கள் எதுவும் தேர்ந்தெடுக்கப்படவில்லை' : 'None selected');
-  };
-
-  // Build full report card text
-  const generateReportText = (tamil: boolean = isTamil) => {
-    if (tamil) {
-      return `நோயாளி அறிக்கை:\nஅறிகுறிகள்: ${getSymptomsSummary()}\nவலி உள்ள இடங்கள்: ${getLocationsSummary()}\nவலியின் அளவு: ${getPainLevelDesc(painIntensity)}\nகுறிப்புகள்: ${notes.trim() || 'குறிப்புகள் எதுவும் இல்லை'}`;
+    if (selectedPointIds.length === 0) {
+      return t('hospital_none_selected') || 'None selected';
     }
-    return `Patient Medical Report:\nSymptoms: ${getSymptomsSummary()}\nPain Locations: ${getLocationsSummary()}\nPain Intensity: ${getPainLevelDesc(painIntensity)}\nNotes: ${notes.trim() || 'No notes added'}`;
+    const uniqueLabels = Array.from(new Set(selectedPointIds.map((id) => getHotspotLabel(id))));
+    return uniqueLabels.join(', ');
   };
 
-  // TTS speech handler
-  const handleSpeakReport = async () => {
-    setErrorMsg(null);
-    const textToSpeak = generateReportText(isTamil);
-    await SpeechService.speak(textToSpeak, isTamil ? 'ta-IN' : 'en-US');
-  };
-
-  // Translate report text to sign language gestures & play on avatar
-  const handleShowAvatar = async () => {
-    setErrorMsg(null);
-    // Keep avatar translation basic for best fingerspelling / gesture results
-    const symptomsString = selectedSymptoms.map(s => s === 'Other' ? otherSymptom : s).join(' ');
-    const partsString = selectedBodyParts.join(' ');
-    const summaryText = `symptoms ${symptomsString} pain ${partsString} level ${painIntensity} ${notes}`.toLowerCase();
-
-    setShowAvatar(true);
-    setAvatarLoading(true);
-    try {
-      const sigml = await translateTextToSigml(summaryText);
-      avatarRef.current?.play(sigml);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to play sign language animation.');
-    } finally {
-      setAvatarLoading(false);
-    }
-  };
-
-  // Helper to trigger background session creation when entering Chat or Final Submission
-  const ensureSessionCreated = async (): Promise<string> => {
+  const ensureSessionCreated = useCallback(async (): Promise<string> => {
     if (sessionId) return sessionId;
-    
-    setLoading(true);
     setErrorMsg(null);
-    const symptomsString = selectedSymptoms.map(s => s === 'Other' && otherSymptom.trim() ? otherSymptom.trim() : s).join(', ');
-    const locationsString = selectedBodyParts.join(', ');
+    const symptomsString = selectedSymptoms.map((s) => (s === 'Other' && otherSymptom.trim() ? otherSymptom.trim() : s)).join(', ');
+    const locationsString = selectedPointIds.map((id) => getHotspotDefaultName(id)).join(', ');
 
     const payload: SymptomPayload = {
       user_id: user?.id || 'guest_user',
@@ -398,7 +410,7 @@ export default function HospitalScreen() {
       symptom: symptomsString || 'General Consult',
       pain_location: locationsString || 'None',
       pain_intensity: painIntensity,
-      language: currentLang,
+      language: 'en',
     };
 
     try {
@@ -406,165 +418,144 @@ export default function HospitalScreen() {
       setSessionId(res.session_id);
       return res.session_id;
     } catch (err: any) {
-      const msg = err.message || 'Failed to initialize session in database.';
-      setErrorMsg(msg);
-      throw new Error(msg);
-    } finally {
-      setLoading(false);
+      console.warn('[HospitalScreen] Session creation warning:', err);
+      const fallbackId = 'session_' + Date.now();
+      setSessionId(fallbackId);
+      return fallbackId;
     }
+  }, [sessionId, selectedSymptoms, otherSymptom, selectedPointIds, painIntensity, user, getHotspotDefaultName]);
+
+  const handleProceedToStep3 = async () => {
+    setStep(3);
+    setCommMode(null);
+    await ensureSessionCreated();
   };
 
-  // Doctor Chat window control
-  const handleStartChat = async () => {
+  const buildMedicalSpeechText = useCallback(() => {
+    const sympList = selectedSymptoms.map((s) => (s === 'Other' && otherSymptom.trim() ? otherSymptom.trim() : s)).join(', ');
+    const locList = selectedPointIds.map((id) => getHotspotLabel(id)).join(', ');
+    const intensity = getPainLevelDesc(painIntensity);
+    const parts: string[] = [];
+    if (sympList) parts.push(`The patient reports ${sympList}.`);
+    if (locList) parts.push(`Pain is located in the ${locList}.`);
+    parts.push(`Pain intensity is ${intensity}.`);
+    if (notes.trim()) parts.push(`Additional notes: ${notes.trim()}.`);
+    return parts.join(' ');
+  }, [selectedSymptoms, otherSymptom, selectedPointIds, painIntensity, notes, getHotspotLabel]);
+
+  const handleSpeakReport = useCallback(async () => {
+    setIsSpeaking(true);
+    const text = buildMedicalSpeechText();
+    await SpeechService.speak(text);
+    setTimeout(() => setIsSpeaking(false), 100);
+  }, [buildMedicalSpeechText]);
+
+  const handleStopSpeaking = useCallback(async () => {
+    await SpeechService.stop();
+    setIsSpeaking(false);
+  }, []);
+
+  const handleSignRecognized = useCallback((phrase: string) => {
+    setRecognizedSign(phrase);
+    setSignRecognizing(false);
+  }, []);
+
+  const handleSpeakRecognizedSign = useCallback(async () => {
+    if (!recognizedSign) return;
+    await SpeechService.speak(recognizedSign);
+  }, [recognizedSign]);
+
+  const handleSelectTextToSign = useCallback(() => {
+    setCommMode('text_to_sign');
+    setAvatarMounted(true);
+  }, []);
+
+  const handleSendTextToSign = useCallback(async () => {
+    if (!textToSignInput.trim()) return;
+    const text = textToSignInput.trim();
+    setTextToSignInput('');
+    setSendingToSign(true);
+    setAvatarLoading(true);
     try {
-      const sId = await ensureSessionCreated();
-      setShowChat(true);
-      if (chatMessages.length === 0) {
-        // Seed initial message
-        setChatMessages([
-          {
-            role: 'assistant',
-            content: isTamil 
-              ? 'வணக்கம், நான் உங்கள் மருத்துவ உதவியாளர். உங்கள் மருத்துவ அறிக்கை பெறப்பட்டது. நான் எவ்வாறு உதவ முடியும்?' 
-              : 'Hello, I am your medical translation assistant. Your report has been generated. How can I help you communicate with the doctor today?',
-            timestamp: new Date().toISOString()
-          }
-        ]);
-      }
-    } catch (_) {
-      // Error handled inside ensureSessionCreated
-    }
-  };
-
-  // Send message in Doctor Chat
-  const handleSendChatMessage = async () => {
-    if (!chatInput.trim()) return;
-    const sId = sessionId;
-    if (!sId) return;
-
-    const userMsg = {
-      role: 'user',
-      content: chatInput.trim(),
-      timestamp: new Date().toISOString()
-    };
-
-    setChatMessages(prev => [...prev, userMsg]);
-    setChatInput('');
-    setChatLoading(true);
-    setErrorMsg(null);
-
-    try {
-      const payload = {
-        user_id: user?.id || 'guest_user',
-        session_id: sId,
-        message: userMsg.content,
-        language: currentLang
-      };
-      const res = await sendHospitalMessage(payload);
-      const assistantMsg = {
-        role: 'assistant',
-        content: res.response_text,
-        timestamp: new Date().toISOString()
-      };
-      setChatMessages(prev => [...prev, assistantMsg]);
-
-      // Automatically Speak AI Response for accessibility
-      await SpeechService.speak(assistantMsg.content, isTamil ? 'ta-IN' : 'en-US');
-
-      // Auto play sign translation for assistant reply
-      try {
-        const sigml = await translateTextToSigml(assistantMsg.content.toLowerCase());
-        avatarRef.current?.play(sigml);
-      } catch (_) {
-        // Sigml translate error shouldn't break chat
+      const sigml = await translateTextToSigml(text.toLowerCase());
+      avatarRef.current?.play(sigml);
+      if (sessionId) {
+        sendHospitalMessage({
+          user_id: user?.id || 'guest_user',
+          session_id: sessionId,
+          message: text,
+          language: 'en',
+        }).catch(() => {});
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to send chat message.');
+      console.warn('[HospitalScreen] SiGML translation error:', err);
     } finally {
-      setChatLoading(false);
+      setAvatarLoading(false);
+      setSendingToSign(false);
     }
-  };
+  }, [textToSignInput, sessionId, user]);
 
-  // Final submit report handler
-  const handleSubmitReport = async () => {
-    setLoading(true);
-    setErrorMsg(null);
-    try {
-      await ensureSessionCreated();
-      setSuccess(true);
-      // Wait brief delay then route back to dashboard home
-      setTimeout(() => {
-        router.replace('/(app)/home');
-      }, 2500);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to submit report.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleStartVoiceInput = useCallback(() => {
+    setVoiceListening(true);
+    setTimeout(() => {
+      setVoiceText(t('hospital_voice_not_available') || 'Voice-to-text requires a native build. Please type your message.');
+      setVoiceListening(false);
+    }, 1500);
+  }, [t]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => {
-          if (step > 1) {
-            setStep(step - 1);
-          } else {
-            router.back();
-          }
-        }}>
-          <Text style={styles.backBtnText}>‹ Back</Text>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => {
+            if (step > 1) {
+              setStep(step - 1);
+            } else {
+              router.back();
+            }
+          }}
+        >
+          <Text style={styles.backBtnText}>‹ {t('emergency_back') || 'Back'}</Text>
         </TouchableOpacity>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>🏥 Hospital Mode</Text>
+          <Text style={styles.headerTitle}>🏥 {t('home_hospital') || 'Hospital Mode'}</Text>
           <Text style={styles.headerSub}>
-            {step === 1 && (isTamil ? 'படி 1 — அறிகுறிகளைத் தேர்ந்தெடுக்கவும்' : 'Step 1 — Select Symptoms')}
-            {step === 2 && (isTamil ? 'படி 2 — வலியின் இடங்கள் & தீவிரம்' : 'Step 2 — Pain Locations & Intensity')}
-            {step === 3 && (isTamil ? 'படி 3 — மருத்துவ அறிக்கை & தொடர்பு' : 'Step 3 — Medical Report & Comm')}
+            {step === 1 && (t('hospital_symptoms_title') || 'Step 1 — Select Symptoms')}
+            {step === 2 && (t('hospital_pain_title') || 'Step 2 — Pain Locations & Intensity')}
+            {step === 3 && (t('hospital_comm_title') || 'Step 3 — Medical Consultation & Communication')}
           </Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-        
-        {/* Step Progress Indicator */}
         <StepIndicator current={step} total={3} />
 
-        {/* Error message banner */}
         {errorMsg && (
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>⚠ {errorMsg}</Text>
           </View>
         )}
 
-        {/* STEP 1: Symptoms Selection */}
         {step === 1 && (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>
-              {isTamil ? 'உங்களுக்கு என்ன அறிகுறிகள் உள்ளன?' : 'What symptoms are you experiencing?'}
+              {t('hospital_symptoms_title') || 'What symptoms are you experiencing?'}
             </Text>
-            
+
             <View style={styles.symptomsGrid}>
               {SYMPTOMS_LIST.map((symptom) => {
                 const isSelected = selectedSymptoms.includes(symptom);
+                const translatedLabel = t(SYMPTOM_KEYS[symptom] || symptom) || symptom;
                 return (
                   <TouchableOpacity
                     key={symptom}
-                    style={[
-                      styles.symptomChip,
-                      isSelected && styles.symptomChipActive,
-                    ]}
+                    style={[styles.symptomChip, isSelected && styles.symptomChipActive]}
                     onPress={() => toggleSymptom(symptom)}
                     activeOpacity={0.8}
                   >
-                    <Text
-                      style={[
-                        styles.symptomChipText,
-                        isSelected && styles.symptomChipTextActive,
-                      ]}
-                    >
-                      {isTamil ? symptomTranslations[symptom] || symptom : symptom}
+                    <Text style={[styles.symptomChipText, isSelected && styles.symptomChipTextActive]}>
+                      {translatedLabel}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -574,44 +565,38 @@ export default function HospitalScreen() {
             {selectedSymptoms.includes('Other') && (
               <View style={styles.otherInputContainer}>
                 <Text style={styles.inputLabel}>
-                  {isTamil ? 'பிற அறிகுறிகள் (குறிப்பிடவும்):' : 'Other symptoms (Please specify):'}
+                  {t('hospital_symptoms_other') || 'Other symptoms (Please specify):'}
                 </Text>
                 <TextInput
                   style={styles.textInput}
                   value={otherSymptom}
                   onChangeText={setOtherSymptom}
-                  placeholder={isTamil ? 'இங்கே எழுதவும்...' : 'Specify symptoms...'}
+                  placeholder="Specify symptoms..."
                   placeholderTextColor="#64748b"
                 />
               </View>
             )}
 
             <TouchableOpacity
-              style={[
-                styles.primaryButton,
-                selectedSymptoms.length === 0 && styles.disabledButton,
-              ]}
+              style={[styles.primaryButton, selectedSymptoms.length === 0 && styles.disabledButton]}
               disabled={selectedSymptoms.length === 0}
               onPress={() => setStep(2)}
               activeOpacity={0.8}
             >
-              <Text style={styles.primaryButtonText}>{isTamil ? 'அடுத்து (Next) ›' : 'Next ›'}</Text>
+              <Text style={styles.primaryButtonText}>{t('next') || 'Next ›'}</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* STEP 2: Body Map + Pain Intensity + Notes */}
         {step === 2 && (
           <View style={styles.step2Container}>
-            
-            {/* View switcher */}
             <View style={styles.tabRow}>
               <TouchableOpacity
                 style={[styles.tabBtn, bodyView === 'front' && styles.tabBtnActive]}
                 onPress={() => setBodyView('front')}
               >
                 <Text style={[styles.tabBtnText, bodyView === 'front' && styles.tabBtnTextActive]}>
-                  {isTamil ? 'முன்புறம் (Front View)' : 'Front View'}
+                  {t('hospital_front_view') || 'Front View'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -619,17 +604,14 @@ export default function HospitalScreen() {
                 onPress={() => setBodyView('back')}
               >
                 <Text style={[styles.tabBtnText, bodyView === 'back' && styles.tabBtnTextActive]}>
-                  {isTamil ? 'பின்புறம் (Back View)' : 'Back View'}
+                  {t('hospital_back_view') || 'Back View'}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {/* Interactive Body Outline Map */}
             <View style={styles.bodyMapCard}>
               <Text style={styles.bodyMapHint}>
-                {isTamil 
-                  ? 'வலியுள்ள உடல்பாகத்தின் மீது தட்டவும் (சிவப்பு வளையம் ஒளிரும்)' 
-                  : 'Tap body parts where you feel pain (glowing red markers appear)'}
+                {t('hospital_tap_body_hint') || 'Tap body parts where you feel pain (glowing markers appear)'}
               </Text>
 
               <View style={styles.bodyMapContainer}>
@@ -640,41 +622,50 @@ export default function HospitalScreen() {
                       : require('../../../assets/body/back_body.png')
                   }
                   style={styles.bodyImage}
+                  resizeMode="contain"
                 />
-                
-                {/* Hotspot overlays */}
+
                 {(bodyView === 'front' ? FRONT_HOTSPOTS : BACK_HOTSPOTS).map((spot) => {
-                  const isSelected = selectedBodyParts.includes(spot.name);
+                  const isSelected = selectedPointIds.includes(spot.id);
+                  const label = t(spot.labelKey) || spot.defaultName;
                   return (
                     <AnimatedHotspot
                       key={spot.id}
+                      point={spot}
                       selected={isSelected}
-                      onPress={() => toggleBodyPart(spot.name)}
-                      style={{ left: spot.x as any, top: spot.y as any }}
+                      onPress={() => togglePointId(spot.id)}
+                      label={label}
                     />
                   );
                 })}
               </View>
 
-              {/* Selected Body Parts Display */}
               <View style={styles.selectedPartsBox}>
-                <Text style={styles.sectionTitle}>
-                  {isTamil ? 'தேர்ந்தெடுக்கப்பட்ட உடல்பாகங்கள்:' : 'Selected Pain Locations:'}
-                </Text>
-                {selectedBodyParts.length === 0 ? (
+                <View style={styles.selectedHeaderRow}>
+                  <Text style={styles.sectionTitle}>
+                    {t('hospital_selected_pain_locations') || 'Selected Pain Locations:'}
+                  </Text>
+                  {selectedPointIds.length > 0 && (
+                    <TouchableOpacity onPress={handleClearAllPoints} style={styles.clearAllBtn}>
+                      <Text style={styles.clearAllText}>{t('hospital_clear_all') || 'Clear All'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {selectedPointIds.length === 0 ? (
                   <Text style={styles.emptyText}>
-                    {isTamil ? 'உடல்பாகங்கள் ஏதும் தேர்ந்தெடுக்கப்படவில்லை' : 'No body parts selected yet.'}
+                    {t('hospital_none_selected') || 'No body parts selected yet.'}
                   </Text>
                 ) : (
                   <View style={styles.badgeRow}>
-                    {selectedBodyParts.map((part) => (
+                    {selectedPointIds.map((id) => (
                       <TouchableOpacity
-                        key={part}
+                        key={id}
                         style={styles.partBadge}
-                        onPress={() => toggleBodyPart(part)}
+                        onPress={() => togglePointId(id)}
                       >
                         <Text style={styles.partBadgeText}>
-                          {isTamil ? partTranslations[part] || part : part}  ×
+                          {getHotspotLabel(id)} ×
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -683,12 +674,11 @@ export default function HospitalScreen() {
               </View>
             </View>
 
-            {/* Pain Intensity Scale (0-10) */}
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>
-                {isTamil ? 'வலியின் தீவிரம் (Pain Intensity):' : 'Pain Intensity:'}
+                {t('hospital_pain_title') || 'Pain Intensity:'}
               </Text>
-              
+
               <Text style={styles.painIntensityDisplay}>
                 {getPainLevelDesc(painIntensity)}
               </Text>
@@ -696,12 +686,11 @@ export default function HospitalScreen() {
               <View style={styles.painScaleRow}>
                 {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => {
                   const isSelected = painIntensity === val;
-                  // Color scale representation
-                  let btnColor = '#10b981'; // Green (0)
-                  if (val >= 1 && val <= 3) btnColor = '#84cc16'; // Yellow-Green
-                  else if (val >= 4 && val <= 6) btnColor = '#f59e0b'; // Orange
-                  else if (val >= 7 && val <= 8) btnColor = '#ea580c'; // Dark Orange
-                  else if (val >= 9) btnColor = '#ef4444'; // Red
+                  let btnColor = '#10b981';
+                  if (val >= 1 && val <= 3) btnColor = '#84cc16';
+                  else if (val >= 4 && val <= 6) btnColor = '#f59e0b';
+                  else if (val >= 7 && val <= 8) btnColor = '#ea580c';
+                  else if (val >= 9) btnColor = '#ef4444';
 
                   return (
                     <TouchableOpacity
@@ -721,221 +710,265 @@ export default function HospitalScreen() {
               </View>
             </View>
 
-            {/* Optional Notes */}
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>
-                {isTamil ? 'கூடுதல் குறிப்புகள் (விருப்பத்தேர்வு):' : 'Optional Notes:'}
+                {t('bank_form_description') || 'Optional Notes:'}
               </Text>
               <TextInput
                 style={[styles.textInput, styles.multilineInput]}
                 value={notes}
                 onChangeText={setNotes}
-                placeholder={
-                  isTamil
-                    ? 'வலியின் காலம், உணர்ச்சி போன்றவற்றைப் பற்றி விவரிக்கவும்...'
-                    : 'Describe onset, sensation, duration, or any other notes...'
-                }
+                placeholder="Describe onset, duration, sensation, or notes..."
                 placeholderTextColor="#64748b"
                 multiline
                 numberOfLines={4}
               />
             </View>
 
-            {/* Continue Button */}
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => setStep(3)}
-              activeOpacity={0.8}
-            >
+            <TouchableOpacity style={styles.primaryButton} onPress={handleProceedToStep3} activeOpacity={0.8}>
               <Text style={styles.primaryButtonText}>
-                {isTamil ? 'அறிக்கை உருவாக்கு (Generate Report) ›' : 'Generate Report ›'}
+                {t('next') || 'Proceed to Communication ›'}
               </Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* STEP 3: Report Summary & Action Options */}
         {step === 3 && (
           <View style={styles.step3Container}>
-            
-            {/* Medical Summary Card */}
             <View style={styles.medicalCard}>
               <View style={styles.medicalHeader}>
-                <Text style={styles.medicalCardTitle}>🏥 Medical Consultation Summary</Text>
-                <Text style={styles.medicalDate}>
-                  {new Date().toLocaleString()}
-                </Text>
+                <Text style={styles.medicalCardTitle}>🏥 {t('hospital_comm_title') || 'Medical Consultation Summary'}</Text>
+                <Text style={styles.medicalDate}>{new Date().toLocaleString()}</Text>
               </View>
 
               <View style={styles.medicalDivider} />
 
               <View style={styles.medicalRow}>
-                <Text style={styles.medicalLabel}>{isTamil ? 'அறிகுறிகள்' : 'Symptoms'}</Text>
+                <Text style={styles.medicalLabel}>{t('hospital_symptoms_title') || 'Symptoms'}</Text>
                 <Text style={styles.medicalVal}>{getSymptomsSummary()}</Text>
               </View>
 
               <View style={styles.medicalRow}>
-                <Text style={styles.medicalLabel}>{isTamil ? 'வலியின் இடங்கள்' : 'Pain Locations'}</Text>
+                <Text style={styles.medicalLabel}>{t('hospital_selected_pain_locations') || 'Pain Locations'}</Text>
                 <Text style={styles.medicalVal}>{getLocationsSummary()}</Text>
               </View>
 
               <View style={styles.medicalRow}>
-                <Text style={styles.medicalLabel}>{isTamil ? 'வலியின் தீவிரம்' : 'Pain Intensity'}</Text>
-                <Text style={[styles.medicalVal, styles.boldTeal]}>
-                  {getPainLevelDesc(painIntensity)}
-                </Text>
+                <Text style={styles.medicalLabel}>{t('hospital_pain_title') || 'Pain Intensity'}</Text>
+                <Text style={[styles.medicalVal, styles.boldTeal]}>{getPainLevelDesc(painIntensity)}</Text>
               </View>
 
               <View style={styles.medicalRow}>
-                <Text style={styles.medicalLabel}>{isTamil ? 'கூடுதல் குறிப்புகள்' : 'Optional Notes'}</Text>
-                <Text style={styles.medicalVal}>{notes.trim() || (isTamil ? 'ஏதுமில்லை' : 'None')}</Text>
+                <Text style={styles.medicalLabel}>{t('hospital_notes_label') || 'Optional Notes'}</Text>
+                <Text style={styles.medicalVal}>{notes.trim() || (t('hospital_none_selected') || 'None')}</Text>
               </View>
             </View>
 
-            {/* Success banner */}
-            {success && (
-              <View style={styles.successBanner}>
-                <Text style={styles.successText}>
-                  {isTamil 
-                    ? '✓ அறிக்கை வெற்றிகரமாக சமர்ப்பிக்கப்பட்டது!' 
-                    : '✓ Medical Report Submitted Successfully!'}
+            <Text style={styles.commSectionTitle}>
+              {t('hospital_choose_communication') || 'Choose Communication Mode'}
+            </Text>
+
+            <View style={[styles.commCardsRow, isDesktop && styles.commCardsRowDesktop]}>
+              <TouchableOpacity
+                style={[
+                  styles.commCard,
+                  commMode === 'speak' && styles.commCardActive,
+                ]}
+                onPress={() => setCommMode('speak')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.commCardIcon}>🔊</Text>
+                <Text style={styles.commCardTitle}>
+                  {t('hospital_speak_report') || 'Speak the Report'}
+                </Text>
+                <Text style={styles.commCardDesc}>
+                  {t('hospital_speak_report_desc') || 'Read the medical consultation report aloud for the doctor.'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.commCard,
+                  commMode === 'sign_to_text' && styles.commCardActive,
+                ]}
+                onPress={() => setCommMode('sign_to_text')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.commCardIcon}>🤟</Text>
+                <Text style={styles.commCardTitle}>
+                  {t('hospital_sign_to_text_voice') || 'Sign Language → Text / Voice'}
+                </Text>
+                <Text style={styles.commCardDesc}>
+                  {t('hospital_sign_to_text_voice_desc') || 'Use sign language and convert it into text and speech for the doctor.'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.commCard,
+                  commMode === 'text_to_sign' && styles.commCardActive,
+                ]}
+                onPress={handleSelectTextToSign}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.commCardIcon}>🧑‍💻</Text>
+                <Text style={styles.commCardTitle}>
+                  {t('hospital_text_voice_to_sign') || 'Text / Voice → Sign Language'}
+                </Text>
+                <Text style={styles.commCardDesc}>
+                  {t('hospital_text_voice_to_sign_desc') || "Convert the doctor's typed or spoken message into sign language."}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {commMode === 'speak' && (
+              <View style={styles.commPanel}>
+                <Text style={styles.commPanelTitle}>🔊 {t('hospital_speak_report') || 'Speak the Report'}</Text>
+                <Text style={styles.commPanelHint}>
+                  {t('hospital_speak_report_desc') || 'The medical report will be read aloud.'}
+                </Text>
+                <View style={styles.speakBtnRow}>
+                  <TouchableOpacity
+                    style={[styles.speakBtn, isSpeaking && styles.speakBtnDisabled]}
+                    onPress={handleSpeakReport}
+                    disabled={isSpeaking}
+                  >
+                    <Text style={styles.speakBtnText}>🔊 {t('hospital_speak_report') || 'Speak Report'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.speakBtn, styles.speakBtnStop, !isSpeaking && styles.speakBtnDisabled]}
+                    onPress={handleStopSpeaking}
+                    disabled={!isSpeaking}
+                  >
+                    <Text style={styles.speakBtnText}>⏸ {t('hospital_stop_speaking') || 'Stop'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.speakBtn}
+                    onPress={handleSpeakReport}
+                  >
+                    <Text style={styles.speakBtnText}>🔁 {t('hospital_replay') || 'Replay'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {commMode === 'sign_to_text' && (
+              <View style={styles.commPanel}>
+                <Text style={styles.commPanelTitle}>🤟 {t('hospital_sign_to_text_voice') || 'Sign Language → Text / Voice'}</Text>
+
+                <View style={styles.cameraContainer}>
+                  <SignToTextDetector
+                    onHandDetected={(landmarks) => {
+                      setSignRecognizing(true);
+                    }}
+                    onHandNotDetected={() => setSignRecognizing(false)}
+                  />
+                  {signRecognizing && (
+                    <View style={styles.recognizingBadge}>
+                      <ActivityIndicator size="small" color={C.primary} />
+                      <Text style={styles.recognizingText}>
+                        {t('hospital_start_recognition') || 'Recognizing sign...'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.recognizedBox}>
+                  <Text style={styles.recognizedLabel}>
+                    {t('hospital_recognized_text') || 'Recognized Text:'}
+                  </Text>
+                  <Text style={styles.recognizedText}>
+                    {recognizedSign || '—'}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.primaryButton,
+                    styles.speakToDocBtn,
+                    !recognizedSign && styles.disabledButton,
+                  ]}
+                  onPress={handleSpeakRecognizedSign}
+                  disabled={!recognizedSign}
+                >
+                  <Text style={styles.primaryButtonText}>
+                    🔊 {t('hospital_speak_to_doctor') || 'Speak to Doctor'}
+                  </Text>
+                </TouchableOpacity>
+
+                <Text style={styles.signLimitationNote}>
+                  {t('hospital_sign_limitation') || 'Sign recognition works on Web (MediaPipe). On Android/iOS a native development build is required for real-time hand tracking.'}
                 </Text>
               </View>
             )}
 
-            {/* Communication Action Panel */}
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>
-                {isTamil ? 'தொடர்பு கொள்ள விருப்பங்கள்:' : 'Communication Options:'}
-              </Text>
+            {commMode === 'text_to_sign' && (
+              <View style={styles.commPanel}>
+                <Text style={styles.commPanelTitle}>🧑‍💻 {t('hospital_text_voice_to_sign') || 'Text / Voice → Sign Language'}</Text>
 
-              <View style={styles.actionGrid}>
-                {/* 1. Speak Report */}
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionBtnSpeak]}
-                  onPress={handleSpeakReport}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.actionBtnIcon}>🔊</Text>
-                  <Text style={styles.actionBtnLabel}>Speak Report</Text>
-                </TouchableOpacity>
-
-                {/* 2. Show Sign Language Avatar */}
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionBtnAvatar]}
-                  onPress={handleShowAvatar}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.actionBtnIcon}>🤟</Text>
-                  <Text style={styles.actionBtnLabel}>Show Avatar</Text>
-                </TouchableOpacity>
-
-                {/* 3. Continue Chat with Doctor */}
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionBtnChat]}
-                  onPress={handleStartChat}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.actionBtnIcon}>💬</Text>
-                  <Text style={styles.actionBtnLabel}>Chat with Doctor</Text>
-                </TouchableOpacity>
-
-                {/* 4. Submit Report */}
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.actionBtnSubmit, loading && styles.disabledButton]}
-                  onPress={handleSubmitReport}
-                  disabled={loading}
-                  activeOpacity={0.8}
-                >
-                  {loading ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Text style={styles.actionBtnIcon}>📤</Text>
-                      <Text style={styles.actionBtnLabel}>Submit Report</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Sign Language Avatar WebGL Frame */}
-            {showAvatar && (
-              <View style={styles.card}>
-                <View style={styles.avatarHeader}>
-                  <Text style={styles.sectionTitle}>Sign Language Interpreter</Text>
-                  <TouchableOpacity onPress={() => setShowAvatar(false)}>
-                    <Text style={styles.closeBtnText}>Close ×</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.playerContainer}>
-                  <SignLanguageAvatar ref={avatarRef} initialAvatar="anna" />
-                  {avatarLoading && (
-                    <View style={styles.playerOverlay}>
-                      <ActivityIndicator size="large" color={C.primary} />
-                    </View>
-                  )}
-                </View>
-              </View>
-            )}
-
-            {/* Doctor Chat Thread Window */}
-            {showChat && (
-              <View style={styles.card}>
-                <View style={styles.avatarHeader}>
-                  <Text style={styles.sectionTitle}>💬 Hospital Translator Chat</Text>
-                  <TouchableOpacity onPress={() => setShowChat(false)}>
-                    <Text style={styles.closeBtnText}>Close ×</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Chat Scroll Screen */}
-                <ScrollView 
-                  style={styles.chatScroll}
-                  contentContainerStyle={styles.chatContentContainer}
-                  nestedScrollEnabled={true}
-                >
-                  {chatMessages.map((msg, index) => {
-                    const isUser = msg.role === 'user';
-                    return (
-                      <View 
-                        key={index}
-                        style={[
-                          styles.chatBubble,
-                          isUser ? styles.chatBubbleUser : styles.chatBubbleAssistant
-                        ]}
-                      >
-                        <Text style={styles.chatBubbleText}>{msg.content}</Text>
-                        <Text style={styles.chatBubbleTime}>
-                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {avatarMounted && (
+                  <View style={styles.avatarContainer}>
+                    <SignLanguageAvatar ref={avatarRef} initialAvatar="anna" />
+                    {avatarLoading && (
+                      <View style={styles.playerOverlay}>
+                        <ActivityIndicator size="large" color={C.primary} />
+                        <Text style={styles.avatarLoadingText}>
+                          {t('hospital_loading_avatar') || 'Loading Sign Language Avatar...'}
                         </Text>
                       </View>
-                    );
-                  })}
-                  {chatLoading && (
-                    <View style={[styles.chatBubble, styles.chatBubbleAssistant, styles.loadingBubble]}>
-                      <ActivityIndicator size="small" color={C.primary} />
-                    </View>
-                  )}
-                </ScrollView>
+                    )}
+                  </View>
+                )}
 
-                {/* Message input controls */}
+                <Text style={styles.inputModeLabel}>{t('hospital_type_message') || 'Type a message for the patient:'}</Text>
                 <View style={styles.chatInputRow}>
                   <TextInput
                     style={styles.chatTextInput}
-                    value={chatInput}
-                    onChangeText={setChatInput}
-                    placeholder={isTamil ? 'இங்கே எழுதவும்...' : 'Type message...'}
+                    value={textToSignInput}
+                    onChangeText={setTextToSignInput}
+                    placeholder={t('hospital_type_message') || 'Type a message for the patient...'}
                     placeholderTextColor="#64748b"
+                    returnKeyType="send"
+                    onSubmitEditing={handleSendTextToSign}
                   />
-                  <TouchableOpacity 
-                    style={styles.chatSendBtn}
-                    onPress={handleSendChatMessage}
-                    disabled={chatLoading}
+                  <TouchableOpacity
+                    style={[
+                      styles.chatSendBtn,
+                      (!textToSignInput.trim() || sendingToSign) && styles.disabledButton,
+                    ]}
+                    onPress={handleSendTextToSign}
+                    disabled={!textToSignInput.trim() || sendingToSign}
                   >
-                    <Text style={styles.chatSendBtnText}>Send</Text>
+                    {sendingToSign ? (
+                      <ActivityIndicator color="#0f172a" size="small" />
+                    ) : (
+                      <Text style={styles.chatSendBtnText}>
+                        🤟 {t('hospital_convert_to_sign') || 'Sign'}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 </View>
+
+                <TouchableOpacity
+                  style={[styles.voiceInputBtn, voiceListening && styles.voiceInputBtnActive]}
+                  onPress={handleStartVoiceInput}
+                  disabled={voiceListening}
+                >
+                  <Text style={styles.voiceInputBtnText}>
+                    {voiceListening
+                      ? `🎙 ${t('hospital_start_speaking') || 'Listening...'}`
+                      : `🎤 ${t('hospital_start_speaking') || 'Speak Message'}`}
+                  </Text>
+                </TouchableOpacity>
+
+                {voiceText ? (
+                  <View style={styles.recognizedBox}>
+                    <Text style={styles.recognizedLabel}>
+                      {t('hospital_recognized_text') || 'Recognized:'}
+                    </Text>
+                    <Text style={styles.recognizedText}>{voiceText}</Text>
+                  </View>
+                ) : null}
               </View>
             )}
           </View>
@@ -966,8 +999,8 @@ const styles = StyleSheet.create({
   },
   backBtnText: {
     color: '#fff',
-    fontSize: 22,
-    fontWeight: '400',
+    fontSize: 16,
+    fontWeight: '600',
   },
   headerTextContainer: {
     flex: 1,
@@ -1054,10 +1087,11 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: C.primary,
     paddingVertical: 14,
+    marginHorizontal: 16,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
+    marginTop: 16,
   },
   primaryButtonText: {
     color: '#0f172a',
@@ -1114,26 +1148,26 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   bodyMapContainer: {
-    width: 260,
-    height: 560,
+    width: '100%',
+    maxWidth: 300,
+    aspectRatio: 260 / 560,
     position: 'relative',
     alignSelf: 'center',
   },
   bodyImage: {
     width: '100%',
     height: '100%',
-    resizeMode: 'contain',
   },
   hotspot: {
     position: 'absolute',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 1.5,
     borderColor: C.primary,
     backgroundColor: 'rgba(0, 255, 204, 0.25)',
-    marginLeft: -12,
-    marginTop: -12,
+    marginLeft: -11,
+    marginTop: -11,
     zIndex: 10,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1149,12 +1183,31 @@ const styles = StyleSheet.create({
   },
   hotspotPulse: {
     position: 'absolute',
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1.5,
     borderColor: C.danger,
     opacity: 0.7,
+  },
+  tooltipBox: {
+    position: 'absolute',
+    bottom: 26,
+    backgroundColor: '#0f172a',
+    borderColor: C.primary,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    zIndex: 99,
+    width: 100,
+    alignItems: 'center',
+  },
+  tooltipText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   selectedPartsBox: {
     width: '100%',
@@ -1162,6 +1215,25 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
     borderColor: C.border,
+  },
+  selectedHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  clearAllBtn: {
+    backgroundColor: '#3d1414',
+    borderColor: C.danger,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  clearAllText: {
+    color: C.danger,
+    fontSize: 11,
+    fontWeight: '700',
   },
   emptyText: {
     fontSize: 14,
@@ -1268,79 +1340,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: C.primary,
   },
-  actionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  actionBtn: {
-    width: '48%',
-    flexGrow: 1,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  actionBtnSpeak: {
-    backgroundColor: '#0369a1',
-  },
-  actionBtnAvatar: {
-    backgroundColor: '#581c87',
-  },
-  actionBtnChat: {
-    backgroundColor: '#15803d',
-  },
-  actionBtnSubmit: {
-    backgroundColor: '#b91c1c',
-  },
-  actionBtnIcon: {
-    fontSize: 20,
-  },
-  actionBtnLabel: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  errorBanner: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderColor: C.danger,
-    borderWidth: 1,
-    borderRadius: 8,
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 12,
-  },
-  errorText: {
-    color: C.danger,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  successBanner: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderColor: '#10b981',
-    borderWidth: 1,
-    borderRadius: 8,
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 14,
-  },
-  successText: {
-    color: '#10b981',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  avatarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  closeBtnText: {
+  avatarNoticeText: {
     color: C.primary,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
+    marginBottom: 12,
   },
   playerContainer: {
     height: 320,
@@ -1354,52 +1358,34 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(11, 15, 25, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 8,
   },
-  chatScroll: {
-    height: 250,
-    backgroundColor: '#0f172a',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 12,
-    marginBottom: 12,
+  avatarLoadingText: {
+    color: C.muted,
+    fontSize: 13,
+    fontWeight: '500',
   },
-  chatContentContainer: {
-    paddingBottom: 16,
-  },
-  chatBubble: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    maxWidth: '80%',
-    marginBottom: 8,
+  threadContainer: {
+    gap: 8,
   },
   chatBubbleUser: {
     backgroundColor: 'rgba(0, 255, 204, 0.15)',
-    alignSelf: 'flex-end',
-    borderWidth: 1,
-    borderColor: C.primary,
-  },
-  chatBubbleAssistant: {
-    backgroundColor: '#1e293b',
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: C.primary,
+    borderRadius: 10,
+    padding: 10,
+    width: '100%',
   },
   chatBubbleText: {
     color: C.text,
     fontSize: 14,
   },
   chatBubbleTime: {
-    fontSize: 9,
+    fontSize: 10,
     color: C.muted,
-    alignSelf: 'flex-end',
     marginTop: 4,
-  },
-  loadingBubble: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 60,
+    alignSelf: 'flex-end',
   },
   chatInputRow: {
     flexDirection: 'row',
@@ -1421,11 +1407,209 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
   },
   chatSendBtnText: {
     color: '#0f172a',
     fontSize: 14,
     fontWeight: '700',
+  },
+  errorBanner: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: C.danger,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginTop: 16,
+    padding: 12,
+  },
+  errorText: {
+    color: C.danger,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  // ── Step 3 Communication Mode Styles ─────────────────────────
+  commSectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.text,
+    marginHorizontal: 16,
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  commCardsRow: {
+    flexDirection: 'column',
+    marginHorizontal: 16,
+    gap: 12,
+  },
+  commCardsRowDesktop: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  commCard: {
+    flex: 1,
+    backgroundColor: C.cardBg,
+    borderRadius: 14,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    alignItems: 'center',
+    gap: 8,
+  },
+  commCardActive: {
+    borderColor: C.primary,
+    backgroundColor: 'rgba(0, 255, 204, 0.08)',
+  },
+  commCardIcon: {
+    fontSize: 32,
+    marginBottom: 4,
+  },
+  commCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.text,
+    textAlign: 'center',
+  },
+  commCardDesc: {
+    fontSize: 12,
+    color: C.muted,
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+  commPanel: {
+    backgroundColor: C.cardBg,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+    gap: 12,
+  },
+  commPanelTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.text,
+    marginBottom: 4,
+  },
+  commPanelHint: {
+    fontSize: 13,
+    color: C.muted,
+    lineHeight: 18,
+  },
+  speakBtnRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginTop: 4,
+  },
+  speakBtn: {
+    flex: 1,
+    backgroundColor: C.primary,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    minWidth: 90,
+  },
+  speakBtnStop: {
+    backgroundColor: C.danger,
+  },
+  speakBtnDisabled: {
+    opacity: 0.4,
+  },
+  speakBtnText: {
+    color: '#0f172a',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  cameraContainer: {
+    height: 260,
+    borderRadius: 14,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: '#000',
+  },
+  recognizingBadge: {
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    padding: 10,
+    borderRadius: 10,
+  },
+  recognizingText: {
+    color: C.primary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  recognizedBox: {
+    backgroundColor: '#0f172a',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    gap: 4,
+  },
+  recognizedLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  recognizedText: {
+    fontSize: 15,
+    color: C.text,
+    lineHeight: 22,
+    fontStyle: 'italic',
+  },
+  speakToDocBtn: {
+    marginHorizontal: 0,
+    marginTop: 4,
+  },
+  signLimitationNote: {
+    fontSize: 11,
+    color: '#64748b',
+    fontStyle: 'italic',
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  avatarContainer: {
+    height: 320,
+    width: '100%',
+    borderRadius: 14,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  inputModeLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.text,
+    marginTop: 4,
+  },
+  voiceInputBtn: {
+    backgroundColor: '#1e293b',
+    borderWidth: 1.5,
+    borderColor: C.border,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  voiceInputBtnActive: {
+    borderColor: C.primary,
+    backgroundColor: 'rgba(0,255,204,0.1)',
+  },
+  voiceInputBtnText: {
+    color: C.text,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  hospital_notes_label: {
+    fontSize: 11,
+    color: C.muted,
   },
 });
