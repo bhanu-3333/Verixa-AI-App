@@ -20,13 +20,12 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { SchemeService, Scheme } from '../../../services/SchemeService';
-import { t, getLanguage, setLanguage, SupportedLanguage } from '../../../services/LanguageService';
+import { SupportedLanguage } from '../../../services/LanguageService';
+import { useLanguage } from '../../../components/LanguageProvider';
 
 export default function SchemeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-
-  // Language state
-  const [lang, setLangState] = useState<string>(getLanguage());
+  const { language, setLanguage: setContextLang, t } = useLanguage();
 
   // Data state
   const [scheme, setScheme] = useState<Scheme | null>(null);
@@ -50,7 +49,7 @@ export default function SchemeDetailScreen() {
     try {
       setLoading(true);
       setErrorMsg(null);
-      const data = await SchemeService.getSchemeById(id, lang);
+      const data = await SchemeService.getSchemeById(id, language);
       setScheme(data);
 
       const savedStatus = await SchemeService.isSchemeSaved(id);
@@ -61,15 +60,14 @@ export default function SchemeDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id, lang]);
+  }, [id, language]);
 
   useEffect(() => {
     fetchSchemeDetails();
   }, [fetchSchemeDetails]);
 
   const handleLanguageToggle = async (newLang: SupportedLanguage) => {
-    await setLanguage(newLang);
-    setLangState(newLang);
+    await setContextLang(newLang);
   };
 
   const handleToggleBookmark = async () => {
@@ -137,12 +135,12 @@ export default function SchemeDetailScreen() {
   // Helper for localized text fields
   const getLoc = (locObj?: { en: string; ta: string }): string => {
     if (!locObj) return '';
-    return lang === 'ta' ? locObj.ta || locObj.en : locObj.en;
+    return language === SupportedLanguage.TA ? locObj.ta || locObj.en : locObj.en;
   };
 
   const getLocList = (locList?: { en: string[]; ta: string[] }): string[] => {
     if (!locList) return [];
-    return lang === 'ta' ? locList.ta || locList.en : locList.en;
+    return language === SupportedLanguage.TA ? locList.ta || locList.en : locList.en;
   };
 
   if (loading) {
@@ -199,16 +197,16 @@ export default function SchemeDetailScreen() {
             {/* Language Switcher */}
             <View style={styles.langToggle}>
               <TouchableOpacity
-                style={[styles.langBtn, lang === 'en' && styles.langBtnActive]}
+                style={[styles.langBtn, language === SupportedLanguage.EN && styles.langBtnActive]}
                 onPress={() => handleLanguageToggle(SupportedLanguage.EN)}
               >
-                <Text style={[styles.langBtnText, lang === 'en' && styles.langBtnTextActive]}>EN</Text>
+                <Text style={[styles.langBtnText, language === SupportedLanguage.EN && styles.langBtnTextActive]}>EN</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.langBtn, lang === 'ta' && styles.langBtnActive]}
+                style={[styles.langBtn, language === SupportedLanguage.TA && styles.langBtnActive]}
                 onPress={() => handleLanguageToggle(SupportedLanguage.TA)}
               >
-                <Text style={[styles.langBtnText, lang === 'ta' && styles.langBtnTextActive]}>தமிழ்</Text>
+                <Text style={[styles.langBtnText, language === SupportedLanguage.TA && styles.langBtnTextActive]}>தமிழ்</Text>
               </TouchableOpacity>
             </View>
           </View>
