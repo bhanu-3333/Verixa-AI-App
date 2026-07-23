@@ -25,6 +25,8 @@ export const SignLanguageAvatar = forwardRef<SignLanguageAvatarRef, SignLanguage
     const isWeb = Platform.OS === 'web';
     const avatarUrl = `${BACKEND_URL}/static/avatar.html`;
 
+    const targetAvatar = (initialAvatar && initialAvatar !== 'null' && initialAvatar !== 'undefined') ? initialAvatar : 'anna';
+
     // Sends a postMessage to the embedded WebGL context (native or web)
     const postToWebGL = useCallback(
       (msg: string) => {
@@ -48,8 +50,9 @@ export const SignLanguageAvatar = forwardRef<SignLanguageAvatarRef, SignLanguage
         setStatusText('Ready');
       },
       setAvatar: (name: string) => {
-        postToWebGL(JSON.stringify({ action: 'setAvatar', avatar: name }));
-        setStatusText(`Avatar switched to ${name}`);
+        const safeName = (name && name !== 'null' && name !== 'undefined') ? name : 'anna';
+        postToWebGL(JSON.stringify({ action: 'setAvatar', avatar: safeName }));
+        setStatusText(`Avatar switched to ${safeName}`);
       },
     }));
 
@@ -61,19 +64,19 @@ export const SignLanguageAvatar = forwardRef<SignLanguageAvatarRef, SignLanguage
           setIsLoaded(true);
           setStatusText('Ready');
           // Sync the avatar character after the CWASA engine confirms ready
-          postToWebGL(JSON.stringify({ action: 'setAvatar', avatar: initialAvatar }));
+          postToWebGL(JSON.stringify({ action: 'setAvatar', avatar: targetAvatar }));
           if (onReady) onReady();
         } else if (payload.status === 'error' || payload.status === 'playback_error') {
           setStatusText(`Status: ${payload.message || 'Error occurred'}`);
           if (onError) onError(payload.message || 'Playback error occurred.');
         }
       },
-      [initialAvatar, postToWebGL, onReady, onError]
+      [targetAvatar, postToWebGL, onReady, onError]
     );
 
     // Triggered when WebView finishes loading the HTML document (Native only)
     function handleLoadEnd() {
-      postToWebGL(JSON.stringify({ action: 'setAvatar', avatar: initialAvatar }));
+      postToWebGL(JSON.stringify({ action: 'setAvatar', avatar: targetAvatar }));
     }
 
     // Handle messages from WebGL context (Native)
