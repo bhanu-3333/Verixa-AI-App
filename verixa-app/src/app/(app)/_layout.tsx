@@ -38,13 +38,11 @@ export default function AppLayout() {
     );
   }
 
-  // Wrap navigation stack with LanguageProvider for multilingual support
+  // SharedHeader and navigation stack are wrapped by the top-level LanguageProvider in root _layout.tsx
   return (
-    <LanguageProvider>
-      <View style={{ flex: 1 }}>
-        <SharedHeader />
-        <Stack screenOptions={{ headerShown: false }} />
-      </View>
-    </LanguageProvider>
+    <View style={{ flex: 1 }}>
+      <SharedHeader />
+      <Stack screenOptions={{ headerShown: false }} />
+    </View>
   );
 }
