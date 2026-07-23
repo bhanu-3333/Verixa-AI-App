@@ -12,10 +12,11 @@ import {
 import { router } from 'expo-router';
 import { getUser, clearAuth } from '../../utils/storage';
 import type { User } from '../../services/authService';
-import { t } from '../../services/LanguageService';
+import { useLanguage } from '../../components/LanguageProvider';
 
 export default function HomeScreen() {
-  const [user,    setUser]    = useState<User | null>(null);
+  const { t, language } = useLanguage();
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,11 +27,10 @@ export default function HomeScreen() {
   }, []);
 
   async function handleLogout() {
-    // Alert.alert doesn't work on web — confirm directly
     const confirmed =
       Platform.OS === 'web'
-        ? window.confirm('Are you sure you want to logout?')
-        : true; // on native we'll use a simpler direct logout
+        ? window.confirm(t('home_logout_confirm') || 'Are you sure you want to logout?')
+        : true;
 
     if (confirmed) {
       await clearAuth();
@@ -51,45 +51,47 @@ export default function HomeScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Verixa AI</Text>
-        <Text style={styles.headerSub}>Dashboard</Text>
+        <Text style={styles.headerTitle}>{t('home_title') || 'Verixa AI'}</Text>
+        <Text style={styles.headerSub}>{t('home_subtitle') || 'Dashboard'}</Text>
       </View>
 
       {/* Welcome Card */}
       <View style={styles.card}>
-        <Text style={styles.welcomeLabel}>Welcome back,</Text>
+        <Text style={styles.welcomeLabel}>{t('home_welcome') || 'Welcome back,'}</Text>
         <Text style={styles.welcomeName}>{user?.name ?? '—'}</Text>
       </View>
 
       {/* User Info Card */}
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Account Details</Text>
+        <Text style={styles.sectionTitle}>{t('home_account_details') || 'Account Details'}</Text>
 
         <View style={styles.row}>
-          <Text style={styles.rowLabel}>Name</Text>
+          <Text style={styles.rowLabel}>{t('home_name') || 'Name'}</Text>
           <Text style={styles.rowValue}>{user?.name ?? '—'}</Text>
         </View>
 
         <View style={styles.divider} />
 
         <View style={styles.row}>
-          <Text style={styles.rowLabel}>Email</Text>
+          <Text style={styles.rowLabel}>{t('home_email') || 'Email'}</Text>
           <Text style={styles.rowValue}>{user?.email ?? '—'}</Text>
         </View>
 
         <View style={styles.divider} />
 
         <View style={styles.row}>
-          <Text style={styles.rowLabel}>Language</Text>
-          <Text style={styles.rowValue}>{user?.preferred_language?.toUpperCase() ?? 'EN'}</Text>
+          <Text style={styles.rowLabel}>{t('home_language') || 'Language'}</Text>
+          <Text style={styles.rowValue}>{language.toUpperCase()}</Text>
         </View>
 
         <View style={styles.divider} />
 
         <View style={styles.row}>
-          <Text style={styles.rowLabel}>Status</Text>
+          <Text style={styles.rowLabel}>{t('home_status') || 'Status'}</Text>
           <View style={[styles.badge, user?.is_active ? styles.badgeActive : styles.badgeInactive]}>
-            <Text style={styles.badgeText}>{user?.is_active ? 'Active' : 'Inactive'}</Text>
+            <Text style={styles.badgeText}>
+              {user?.is_active ? (t('home_active') || 'Active') : (t('home_inactive') || 'Inactive')}
+            </Text>
           </View>
         </View>
       </View>
@@ -97,7 +99,7 @@ export default function HomeScreen() {
       {/* Auth status notice */}
       <View style={styles.notice}>
         <Text style={styles.noticeText}>
-          ✓ Authenticated via JWT · Phase 3 Complete
+          ✓ {t('home_auth_notice') || 'Authenticated via JWT · Phase 3 Complete'}
         </Text>
       </View>
 
@@ -109,8 +111,8 @@ export default function HomeScreen() {
       >
         <Text style={styles.featureIcon}>🤟</Text>
         <View style={{ flex: 1 }}>
-          <Text style={styles.featureTitle}>Sign Language Avatar</Text>
-          <Text style={styles.featureDesc}>Translate text into 3D sign language gestures</Text>
+          <Text style={styles.featureTitle}>{t('home_sign_avatar') || 'Sign Language Avatar'}</Text>
+          <Text style={styles.featureDesc}>{t('home_sign_avatar_desc') || 'Translate text into 3D sign language gestures'}</Text>
         </View>
         <Text style={styles.featureArrow}>›</Text>
       </TouchableOpacity>
@@ -123,8 +125,8 @@ export default function HomeScreen() {
       >
         <Text style={styles.featureIcon}>📷</Text>
         <View style={{ flex: 1 }}>
-          <Text style={styles.featureTitle}>Sign to Text</Text>
-          <Text style={styles.featureDesc}>Translate hand signs into text in real time</Text>
+          <Text style={styles.featureTitle}>{t('home_sign_to_text') || 'Sign to Text'}</Text>
+          <Text style={styles.featureDesc}>{t('home_sign_to_text_desc') || 'Translate hand signs into text in real time'}</Text>
         </View>
         <Text style={styles.featureArrow}>›</Text>
       </TouchableOpacity>
@@ -137,27 +139,11 @@ export default function HomeScreen() {
       >
         <Text style={styles.featureIcon}>🎁</Text>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.featureTitle, { color: '#00E676' }]}>{t('home_schemes')}</Text>
-          <Text style={styles.featureDesc}>{t('home_schemes_desc')}</Text>
+          <Text style={[styles.featureTitle, { color: '#00E676' }]}>{t('home_schemes') || 'Schemes & Benefits'}</Text>
+          <Text style={styles.featureDesc}>{t('home_schemes_desc') || 'Discover government schemes and benefits'}</Text>
         </View>
         <Text style={[styles.featureArrow, { color: '#00E676' }]}>›</Text>
       </TouchableOpacity>
-
-      {/* Developer Dataset Recorder (Visible only in dev mode) */}
-      {__DEV__ && (
-        <TouchableOpacity
-          style={[styles.featureCard, { borderColor: 'rgba(0, 255, 204, 0.3)', borderWidth: 1 }]}
-          onPress={() => router.push('/sign-training' as any)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.featureIcon}>🛠️</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.featureTitle, { color: '#00FFCC' }]}>Sign Dataset Recorder</Text>
-            <Text style={styles.featureDesc}>[Dev Utility] Record sign sequence training dataset samples</Text>
-          </View>
-          <Text style={[styles.featureArrow, { color: '#00FFCC' }]}>›</Text>
-        </TouchableOpacity>
-      )}
 
       {/* Emergency SOS Feature */}
       <TouchableOpacity
@@ -167,8 +153,8 @@ export default function HomeScreen() {
       >
         <Text style={styles.featureIcon}>🚨</Text>
         <View style={{ flex: 1 }}>
-          <Text style={styles.featureTitle}>Emergency SOS</Text>
-          <Text style={styles.featureDesc}>Send instant emergency alert and location</Text>
+          <Text style={styles.featureTitle}>{t('home_emergency') || 'Emergency SOS'}</Text>
+          <Text style={styles.featureDesc}>{t('home_emergency_desc') || 'Send instant emergency alert and location'}</Text>
         </View>
         <Text style={styles.featureArrow}>›</Text>
       </TouchableOpacity>
@@ -181,8 +167,8 @@ export default function HomeScreen() {
       >
         <Text style={styles.featureIcon}>🏥</Text>
         <View style={{ flex: 1 }}>
-          <Text style={styles.featureTitle}>Hospital Mode</Text>
-          <Text style={styles.featureDesc}>Log symptoms, map pain locations, and speak to doctors</Text>
+          <Text style={styles.featureTitle}>{t('home_hospital') || 'Hospital Mode'}</Text>
+          <Text style={styles.featureDesc}>{t('home_hospital_desc') || 'Log symptoms, map pain locations, and speak to doctors'}</Text>
         </View>
         <Text style={styles.featureArrow}>›</Text>
       </TouchableOpacity>
@@ -195,18 +181,16 @@ export default function HomeScreen() {
       >
         <Text style={styles.featureIcon}>🏦</Text>
         <View style={{ flex: 1 }}>
-          <Text style={styles.featureTitle}>Bank Mode</Text>
-          <Text style={styles.featureDesc}>Access banking services with AI-powered communication</Text>
+          <Text style={styles.featureTitle}>{t('home_bank') || 'Bank Mode'}</Text>
+          <Text style={styles.featureDesc}>{t('home_bank_desc') || 'Access banking services with AI-powered communication'}</Text>
         </View>
         <Text style={styles.featureArrow}>›</Text>
       </TouchableOpacity>
 
-
       {/* Logout */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-        <Text style={styles.logoutText}>Logout</Text>
+        <Text style={styles.logoutText}>{t('home_logout') || 'Logout'}</Text>
       </TouchableOpacity>
-
 
     </ScrollView>
   );
