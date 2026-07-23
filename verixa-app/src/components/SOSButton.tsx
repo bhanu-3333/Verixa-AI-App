@@ -193,7 +193,7 @@ export const SOSButton: React.FC<SOSButtonProps> = ({
       </Pressable>
 
       {isHolding && (
-        <Text style={styles.hintLabel}>Keep holding to activate emergency siren...</Text>
+        <Text style={styles.hintLabel}>Keep holding to send emergency SOS...</Text>
       )}
     </View>
   );
