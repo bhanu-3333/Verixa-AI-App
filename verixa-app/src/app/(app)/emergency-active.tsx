@@ -18,6 +18,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useLanguage } from '../../components/LanguageProvider';
 import emergencyAlarmService, {
   AlarmState,
+  prepareEmergencyAlarm,
   startEmergencyAlarm,
   stopEmergencyAlarm,
   cleanupEmergencyAlarm,
@@ -50,8 +51,11 @@ export default function EmergencyActiveScreen() {
       ? `https://www.google.com/maps?q=${latitude},${longitude}&ll=${latitude},${longitude}&z=17`
       : null);
 
-  // Subscribe to EmergencyAlarmService state changes
+  // Subscribe to EmergencyAlarmService state changes + preload native audio player
   useEffect(() => {
+    // Preload native audio player so siren starts immediately on ACTIVATE
+    prepareEmergencyAlarm();
+
     const unsubscribe = emergencyAlarmService.subscribe((state) => {
       setAlarmState(state);
     });
