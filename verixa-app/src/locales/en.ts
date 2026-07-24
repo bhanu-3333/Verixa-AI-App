@@ -212,6 +212,7 @@ const en: Record<string, string> = {
   emergency_stop_alarm: 'STOP ALARM',
   emergency_alert_sent: 'Emergency alert sent successfully.',
   emergency_alert_failed: 'Emergency alert could not be sent. Please try again.',
+  emergency_test_mode_text: 'Test Mode — No real WhatsApp message was sent.',
   emergency_sos_status: 'SOS Status',
 
   // ── Sign Phrases ───────────────────────────────────────────
@@ -265,6 +266,17 @@ const en: Record<string, string> = {
   schemes_no_saved: 'No saved schemes yet. Tap ♡ on any scheme to save it for later.',
   schemes_link_unavailable: 'Official application link currently unavailable.',
   schemes_url_error: 'Unable to open the official portal.',
+  schemes_view_details: 'View Details →',
+  schemes_badge_central: '🏛️ Central Government',
+  schemes_badge_state_tn: '🌾 Tamil Nadu Government',
+  schemes_verified_source: 'Verified Source:',
+  schemes_last_verified: 'Last Verified:',
+  schemes_check_dates_hint: 'Please check the official portal for current application dates.',
+  schemes_disclaimer_title: 'Important Government Disclaimer',
+  schemes_official_portal: 'Official Portal:',
+  schemes_security_warning: 'Security Warning: Only official HTTPS government portals can be opened.',
+  schemes_not_found: 'Scheme not found.',
+  schemes_load_error: 'Unable to load schemes.',
 
 
   // ── Common ──────────────────────────────────────────────────
