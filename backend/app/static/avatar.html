@@ -93,8 +93,15 @@
 
   <script type="text/javascript">
     // ── State ─────────────────────────────────────────────────────────────────
-    var isReady      = false;
-    var pendingQueue = []; // Commands arriving before avatarready fires
+    var isReady          = false;
+    var pendingQueue     = []; // Commands arriving before avatarready fires
+    var preloadStartTime = Date.now();
+
+    // Notify React layer that HTML has parsed and JS is executing
+    // (happens long before CWASA engine is ready — useful for perf baseline)
+    setTimeout(function() {
+      sendEventToApp({ status: 'preload_start', ts: preloadStartTime });
+    }, 0);
 
     // ── Overlay helpers ───────────────────────────────────────────────────────
     function setStatusText(msg) {
@@ -137,11 +144,14 @@
 
     function setAvatar(avatarName) {
       try {
+        // Guard: never allow null/undefined/empty strings — always fall back to 'anna'
+        var name;
         if (!avatarName || avatarName === "null" || avatarName === "undefined" || String(avatarName).trim() === "") {
-          console.warn("setAvatar aborted: invalid avatarName:", avatarName);
-          return;
+          console.warn("[avatar.html] setAvatar: invalid name '" + avatarName + "', defaulting to 'anna'");
+          name = "anna";
+        } else {
+          name = String(avatarName).toLowerCase().trim();
         }
-        var name = avatarName.toLowerCase();
         var selectEl = document.querySelector(".menuAv.av0");
         if (selectEl) {
           var hasOption = Array.from(selectEl.options).some(function(opt) {
@@ -151,7 +161,12 @@
             selectEl.value = name;
             selectEl.dispatchEvent(new Event("change"));
           } else {
-            console.warn("setAvatar aborted: option not found for", name);
+            // Requested avatar not in list — silently fall back to first available
+            console.warn("[avatar.html] setAvatar: '" + name + "' not in option list — falling back to 'anna'");
+            if (selectEl.options.length > 0) {
+              selectEl.value = "anna";
+              selectEl.dispatchEvent(new Event("change"));
+            }
           }
         }
       } catch (e) {
@@ -159,10 +174,35 @@
       }
     }
 
+    function playSiGMLWithDone(sigmlText) {
+      try {
+        CWASA.playSiGMLText(sigmlText);
+        // Poll for completion (CWASA does not fire a completion event reliably)
+        // We check the internal playing flag every 250 ms for up to 30 s
+        var maxChecks = 120;
+        var checks = 0;
+        var poll = setInterval(function() {
+          checks++;
+          try {
+            var isPlaying = CWASA.isPlayingSiGML ? CWASA.isPlayingSiGML() : false;
+            if (!isPlaying || checks >= maxChecks) {
+              clearInterval(poll);
+              sendEventToApp({ status: 'playback_done' });
+            }
+          } catch (e2) {
+            clearInterval(poll);
+            sendEventToApp({ status: 'playback_done' });
+          }
+        }, 250);
+      } catch (e) {
+        sendEventToApp({ status: "playback_error", message: String(e.message) });
+      }
+    }
+
     // ── Command dispatcher ────────────────────────────────────────────────────
     function dispatch(payload) {
       if (!payload || !payload.action) return;
-      if      (payload.action === "play")      { playSiGML(payload.sigml); }
+      if      (payload.action === "play")      { playSiGMLWithDone(payload.sigml); }
       else if (payload.action === "stop")      { stopSiGML(); }
       else if (payload.action === "setAvatar") { setAvatar(payload.avatar); }
     }
@@ -211,8 +251,11 @@
         // Hook CWASA lifecycle events BEFORE calling init()
         Logger.addHook("avatarready", function() {
           isReady = true;
+          var readyTime = Date.now();
+          var elapsed = readyTime - preloadStartTime;
+          console.log("[avatar.html] ✅ avatarready — elapsed: " + elapsed + "ms");
           hideOverlay();
-          sendEventToApp({ status: "ready" });
+          sendEventToApp({ status: "ready", elapsed_ms: elapsed });
           // Drain commands that arrived while the avatar was still loading
           while (pendingQueue.length > 0) { dispatch(pendingQueue.shift()); }
         });
