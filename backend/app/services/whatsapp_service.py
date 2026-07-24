@@ -34,13 +34,11 @@ class WhatsAppService:
         # Safe startup diagnostic (never logs full token)
         tok = self.access_token or ""
         app_logger.info(
-            f"[WhatsAppService] Init diagnostic:"
-            f" token_prefix={tok[:8]!r}"
-            f" token_len={len(tok)}"
-            f" token_suffix={tok[-4:]!r}"
-            f" phone_number_id={self.phone_number_id!r}"
-            f" template={self.template_name!r}"
-            f" credentials_present={bool(self.access_token and self.phone_number_id)}"
+            f"[WhatsAppService] Safe startup log: "
+            f"token loaded={bool(tok)}, "
+            f"token length={len(tok)}, "
+            f"first 6 characters={tok[:6]!r}, "
+            f"last 4 characters={tok[-4:]!r}"
         )
 
     @staticmethod
