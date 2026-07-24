@@ -24,6 +24,11 @@ import { translateTextToSigml } from '../../services/avatarService';
 import { startHospitalSession, sendHospitalMessage, SymptomPayload } from '../../services/hospitalService';
 import SpeechService from '../../services/SpeechService';
 import { getUser } from '../../utils/storage';
+import { CommunicationModeSelector, CommunicationMode } from '../../components/communication/CommunicationModeSelector';
+import { SpeakReportPanel } from '../../components/communication/SpeakReportPanel';
+import { SignToTextVoicePanel } from '../../components/communication/SignToTextVoicePanel';
+import { TextVoiceToSignPanel } from '../../components/communication/TextVoiceToSignPanel';
+
 
 // Standard Symptoms list for Screen 1
 const SYMPTOMS_LIST = [
@@ -428,6 +433,7 @@ export default function HospitalScreen() {
   const handleProceedToStep3 = async () => {
     setStep(3);
     setCommMode(null);
+    setAvatarMounted(true);
     await ensureSessionCreated();
   };
 
@@ -735,6 +741,25 @@ export default function HospitalScreen() {
 
         {step === 3 && (
           <View style={styles.step3Container}>
+            {/* ── Background-preloaded avatar (hidden until Option 3 selected) ── */}
+            {avatarMounted && (
+              <View style={{ height: commMode === 'text_to_sign' ? undefined : 0, overflow: 'hidden' }}>
+                <View style={styles.card}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: C.text }}>🤟 {t('hospital_text_voice_to_sign') || 'Sign Language Avatar'}</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#10B981' }}>● {t('ready') || 'Ready'}</Text>
+                  </View>
+                  <SignLanguageAvatar
+                    ref={avatarRef}
+                    initialAvatar="anna"
+                    preload
+                    onError={(msg) => console.warn('[Hospital Avatar]', msg)}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* ── Medical Consultation Summary Card ── */}
             <View style={styles.medicalCard}>
               <View style={styles.medicalHeader}>
                 <Text style={styles.medicalCardTitle}>🏥 {t('hospital_comm_title') || 'Medical Consultation Summary'}</Text>
@@ -764,212 +789,40 @@ export default function HospitalScreen() {
               </View>
             </View>
 
-            <Text style={styles.commSectionTitle}>
-              {t('hospital_choose_communication') || 'Choose Communication Mode'}
-            </Text>
+            {/* ── 3 Communication Option Selector ── */}
+            <CommunicationModeSelector
+              currentMode={commMode}
+              onSelectMode={(mode) => setCommMode(mode)}
+              domain="hospital"
+            />
 
-            <View style={[styles.commCardsRow, isDesktop && styles.commCardsRowDesktop]}>
-              <TouchableOpacity
-                style={[
-                  styles.commCard,
-                  commMode === 'speak' && styles.commCardActive,
-                ]}
-                onPress={() => setCommMode('speak')}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.commCardIcon}>🔊</Text>
-                <Text style={styles.commCardTitle}>
-                  {t('hospital_speak_report') || 'Speak the Report'}
-                </Text>
-                <Text style={styles.commCardDesc}>
-                  {t('hospital_speak_report_desc') || 'Read the medical consultation report aloud for the doctor.'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.commCard,
-                  commMode === 'sign_to_text' && styles.commCardActive,
-                ]}
-                onPress={() => setCommMode('sign_to_text')}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.commCardIcon}>🤟</Text>
-                <Text style={styles.commCardTitle}>
-                  {t('hospital_sign_to_text_voice') || 'Sign Language → Text / Voice'}
-                </Text>
-                <Text style={styles.commCardDesc}>
-                  {t('hospital_sign_to_text_voice_desc') || 'Use sign language and convert it into text and speech for the doctor.'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.commCard,
-                  commMode === 'text_to_sign' && styles.commCardActive,
-                ]}
-                onPress={handleSelectTextToSign}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.commCardIcon}>🧑‍💻</Text>
-                <Text style={styles.commCardTitle}>
-                  {t('hospital_text_voice_to_sign') || 'Text / Voice → Sign Language'}
-                </Text>
-                <Text style={styles.commCardDesc}>
-                  {t('hospital_text_voice_to_sign_desc') || "Convert the doctor's typed or spoken message into sign language."}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
+            {/* ── Option 1: Speak Out Report Panel ── */}
             {commMode === 'speak' && (
-              <View style={styles.commPanel}>
-                <Text style={styles.commPanelTitle}>🔊 {t('hospital_speak_report') || 'Speak the Report'}</Text>
-                <Text style={styles.commPanelHint}>
-                  {t('hospital_speak_report_desc') || 'The medical report will be read aloud.'}
-                </Text>
-                <View style={styles.speakBtnRow}>
-                  <TouchableOpacity
-                    style={[styles.speakBtn, isSpeaking && styles.speakBtnDisabled]}
-                    onPress={handleSpeakReport}
-                    disabled={isSpeaking}
-                  >
-                    <Text style={styles.speakBtnText}>🔊 {t('hospital_speak_report') || 'Speak Report'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.speakBtn, styles.speakBtnStop, !isSpeaking && styles.speakBtnDisabled]}
-                    onPress={handleStopSpeaking}
-                    disabled={!isSpeaking}
-                  >
-                    <Text style={styles.speakBtnText}>⏸ {t('hospital_stop_speaking') || 'Stop'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.speakBtn}
-                    onPress={handleSpeakReport}
-                  >
-                    <Text style={styles.speakBtnText}>🔁 {t('hospital_replay') || 'Replay'}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+              <SpeakReportPanel reportSpeechText={buildMedicalSpeechText()} />
             )}
 
+            {/* ── Option 2: Sign Language → Text / Voice Panel ── */}
             {commMode === 'sign_to_text' && (
-              <View style={styles.commPanel}>
-                <Text style={styles.commPanelTitle}>🤟 {t('hospital_sign_to_text_voice') || 'Sign Language → Text / Voice'}</Text>
-
-                <View style={styles.cameraContainer}>
-                  <SignToTextDetector
-                    onHandDetected={(landmarks) => {
-                      setSignRecognizing(true);
-                    }}
-                    onHandNotDetected={() => setSignRecognizing(false)}
-                  />
-                  {signRecognizing && (
-                    <View style={styles.recognizingBadge}>
-                      <ActivityIndicator size="small" color={C.primary} />
-                      <Text style={styles.recognizingText}>
-                        {t('hospital_start_recognition') || 'Recognizing sign...'}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-
-                <View style={styles.recognizedBox}>
-                  <Text style={styles.recognizedLabel}>
-                    {t('hospital_recognized_text') || 'Recognized Text:'}
-                  </Text>
-                  <Text style={styles.recognizedText}>
-                    {recognizedSign || '—'}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={[
-                    styles.primaryButton,
-                    styles.speakToDocBtn,
-                    !recognizedSign && styles.disabledButton,
-                  ]}
-                  onPress={handleSpeakRecognizedSign}
-                  disabled={!recognizedSign}
-                >
-                  <Text style={styles.primaryButtonText}>
-                    🔊 {t('hospital_speak_to_doctor') || 'Speak to Doctor'}
-                  </Text>
-                </TouchableOpacity>
-
-                <Text style={styles.signLimitationNote}>
-                  {t('hospital_sign_limitation') || 'Sign recognition works on Web (MediaPipe). On Android/iOS a native development build is required for real-time hand tracking.'}
-                </Text>
-              </View>
+              <SignToTextVoicePanel staffType="doctor" />
             )}
 
+            {/* ── Option 3: Text / Voice → Sign Language Panel ── */}
             {commMode === 'text_to_sign' && (
-              <View style={styles.commPanel}>
-                <Text style={styles.commPanelTitle}>🧑‍💻 {t('hospital_text_voice_to_sign') || 'Text / Voice → Sign Language'}</Text>
-
-                {avatarMounted && (
-                  <View style={styles.avatarContainer}>
-                    <SignLanguageAvatar ref={avatarRef} initialAvatar="anna" />
-                    {avatarLoading && (
-                      <View style={styles.playerOverlay}>
-                        <ActivityIndicator size="large" color={C.primary} />
-                        <Text style={styles.avatarLoadingText}>
-                          {t('hospital_loading_avatar') || 'Loading Sign Language Avatar...'}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                <Text style={styles.inputModeLabel}>{t('hospital_type_message') || 'Type a message for the patient:'}</Text>
-                <View style={styles.chatInputRow}>
-                  <TextInput
-                    style={styles.chatTextInput}
-                    value={textToSignInput}
-                    onChangeText={setTextToSignInput}
-                    placeholder={t('hospital_type_message') || 'Type a message for the patient...'}
-                    placeholderTextColor="#64748b"
-                    returnKeyType="send"
-                    onSubmitEditing={handleSendTextToSign}
-                  />
-                  <TouchableOpacity
-                    style={[
-                      styles.chatSendBtn,
-                      (!textToSignInput.trim() || sendingToSign) && styles.disabledButton,
-                    ]}
-                    onPress={handleSendTextToSign}
-                    disabled={!textToSignInput.trim() || sendingToSign}
-                  >
-                    {sendingToSign ? (
-                      <ActivityIndicator color="#0f172a" size="small" />
-                    ) : (
-                      <Text style={styles.chatSendBtnText}>
-                        🤟 {t('hospital_convert_to_sign') || 'Sign'}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.voiceInputBtn, voiceListening && styles.voiceInputBtnActive]}
-                  onPress={handleStartVoiceInput}
-                  disabled={voiceListening}
-                >
-                  <Text style={styles.voiceInputBtnText}>
-                    {voiceListening
-                      ? `🎙 ${t('hospital_start_speaking') || 'Listening...'}`
-                      : `🎤 ${t('hospital_start_speaking') || 'Speak Message'}`}
-                  </Text>
-                </TouchableOpacity>
-
-                {voiceText ? (
-                  <View style={styles.recognizedBox}>
-                    <Text style={styles.recognizedLabel}>
-                      {t('hospital_recognized_text') || 'Recognized:'}
-                    </Text>
-                    <Text style={styles.recognizedText}>{voiceText}</Text>
-                  </View>
-                ) : null}
-              </View>
+              <TextVoiceToSignPanel
+                avatarRef={avatarRef}
+                avatarReady={true}
+                staffType="doctor"
+                onSendTextMessage={(msg) => {
+                  if (sessionId) {
+                    sendHospitalMessage({
+                      user_id: user?.id || 'guest_user',
+                      session_id: sessionId,
+                      message: msg,
+                      language: 'en',
+                    }).catch(() => {});
+                  }
+                }}
+              />
             )}
           </View>
         )}
