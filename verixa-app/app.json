@@ -22,9 +22,14 @@
         "ACCESS_FINE_LOCATION",
         "CAMERA",
         "RECORD_AUDIO",
-        "VIBRATE"
+        "VIBRATE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.bhanu_ub.verixaapp"
     },
     "web": {
       "output": "static",
