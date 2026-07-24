@@ -29,9 +29,10 @@ class EmergencyAlertDocument(BaseModel):
     longitude:      float
     maps_link:      str
     emergency_type: str  # e.g., "Medical", "Police", "Fire", "General"
-    status:           str = "pending"   # pending | sent | failed
+    status:           str = "pending"   # pending | success | mocked | failed
     whatsapp_status:  str = "pending"   # pending | success | mocked | failed
-    delivery_status:  Optional[str] = "pending"
+    delivery_status:  Optional[str] = "pending"  # pending | accepted | mocked | failed
+    record_status:    str = "saved"     # saved
     meta_response_id: Optional[str] = None
     error_message:    Optional[str] = None
     created_at:       datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

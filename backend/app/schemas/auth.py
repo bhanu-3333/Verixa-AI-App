@@ -10,9 +10,9 @@ class RegisterRequest(BaseModel):
     name:                           str = Field(..., min_length=2, max_length=80, examples=["Rindhiya"])
     email:                          str = Field(..., examples=["user@example.com"])
     password:                       str = Field(..., min_length=6, examples=["secret123"])
-    emergency_contact_name:         str = Field(..., min_length=2, examples=["John Doe"])
-    emergency_contact_phone:        str = Field(..., min_length=6, examples=["+919876543210"])
-    emergency_contact_relationship: str = Field(..., min_length=2, examples=["brother"])
+    emergency_contact_name:         Optional[str] = Field(default="", examples=["John Doe"])
+    emergency_contact_phone:        Optional[str] = Field(default="", examples=["+919876543210"])
+    emergency_contact_relationship: Optional[str] = Field(default="", examples=["brother"])
 
 
 class LoginRequest(BaseModel):

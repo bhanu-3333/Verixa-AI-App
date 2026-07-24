@@ -32,7 +32,14 @@ def _public(user: dict) -> dict:
 
 # ── Public API ─────────────────────────────────────────────────────────────────
 
-async def create_user(name: str, email: str, password: str, emergency_contact_name: str, emergency_contact_phone: str, emergency_contact_relationship: str) -> dict:
+async def create_user(
+    name: str,
+    email: str,
+    password: str,
+    emergency_contact_name: str = "",
+    emergency_contact_phone: str = "",
+    emergency_contact_relationship: str = "",
+) -> dict:
     """
     Register a new user.
     - Checks for duplicate email.

@@ -103,7 +103,7 @@ async def send_sos_alert(
     4. Update the alert status to 'sent' or 'failed'.
     5. Return alert_id + final status.
     """
-    # 1. Persist the alert with status=pending
+    # 1. Persist the alert with status=pending and record_status=saved
     alert_doc = EmergencyAlertDocument(
         user_id=user_id,
         latitude=latitude,
@@ -111,6 +111,7 @@ async def send_sos_alert(
         maps_link=maps_link,
         emergency_type=emergency_type,
         status="pending",
+        record_status="saved",
     )
     insert_result = await db.emergency_alerts.insert_one(alert_doc.model_dump())
     alert_id = str(insert_result.inserted_id)
@@ -125,11 +126,13 @@ async def send_sos_alert(
 
     # 3. Build Maps URL + send WhatsApp alert (official Cloud API)
     from app.services.whatsapp_service import WhatsAppService
-    # Use the provided maps_link or generate a fresh street-level URL
     final_maps_link = maps_link or WhatsAppService.build_maps_url(latitude, longitude)
 
     whatsapp_status = "failed"
+    delivery_status = "failed"
+    meta_response_id = None
     error_message = None
+
     if contact_phone:
         user_name = user.get("name", "A Verixa user") if user else "A Verixa user"
         try:
@@ -143,35 +146,41 @@ async def send_sos_alert(
                 emergency_type=emergency_type,
             )
             whatsapp_status = ws_res.get("status", "failed")
+            delivery_status = ws_res.get("delivery_status", "failed")
+            meta_response_id = ws_res.get("meta_response_id")
             if whatsapp_status not in ("success", "mocked"):
-                error_message = ws_res.get("message", "Unknown error sending WhatsApp template.")
+                error_message = ws_res.get("message", "WhatsApp alert sending failed.")
         except Exception as e:
             whatsapp_status = "failed"
+            delivery_status = "failed"
+            meta_response_id = None
             error_message = str(e)
-            app_logger.error(f"WhatsApp sending failed for alert {alert_id}: {str(e)}")
+            app_logger.error(f"WhatsApp sending exception for alert {alert_id}: {str(e)}")
     else:
         whatsapp_status = "failed"
+        delivery_status = "failed"
         error_message = "No emergency contact phone registered on user profile."
         app_logger.warning(f"SOS alert {alert_id}: No emergency contact phone.")
 
-    # 4. Update alert status (fields match EmergencyAlertDocument schema)
-    final_status = "sent" if whatsapp_status in ("success", "mocked", "sent") else "failed"
-
-    # Extract Meta Response ID if successful
-    meta_response_id = None
-    if whatsapp_status == "success" and isinstance(ws_res, dict) and "response" in ws_res:
-        meta_res = ws_res["response"]
-        if isinstance(meta_res, dict) and "messages" in meta_res:
-            msgs = meta_res["messages"]
-            if isinstance(msgs, list) and len(msgs) > 0:
-                meta_response_id = msgs[0].get("id")
-
-    delivery_status = "sent" if whatsapp_status == "success" else ("mocked" if whatsapp_status == "mocked" else "failed")
+    # 4. Strict overall status mapping:
+    # "success" -> ONLY if WhatsApp call succeeded and meta_response_id is present
+    # "mocked"  -> IF in dev mock mode
+    # "failed"  -> for ALL other errors
+    if whatsapp_status == "success" and meta_response_id:
+        overall_status = "success"
+        delivery_status = "accepted"
+    elif whatsapp_status == "mocked":
+        overall_status = "mocked"
+        delivery_status = "mocked"
+    else:
+        overall_status = "failed"
+        delivery_status = "failed"
 
     await db.emergency_alerts.update_one(
         {"_id": insert_result.inserted_id},
         {"$set": {
-            "status":           final_status,
+            "status":           overall_status,
+            "record_status":    "saved",
             "whatsapp_status":  whatsapp_status,
             "delivery_status":  delivery_status,
             "meta_response_id": meta_response_id,
@@ -182,11 +191,13 @@ async def send_sos_alert(
 
     app_logger.warning(
         f"SOS alert processed: alert_id={alert_id} | type={emergency_type} | "
-        f"user={user_id} | whatsapp_status={whatsapp_status} | status={final_status} | delivery_status={delivery_status} | meta_id={meta_response_id}"
+        f"user={user_id} | whatsapp_status={whatsapp_status} | overall_status={overall_status} | "
+        f"delivery_status={delivery_status} | meta_id={meta_response_id}"
     )
     return {
         "alert_id": alert_id,
-        "status": final_status,
+        "record_status": "saved",
+        "status": overall_status,
         "whatsapp_status": whatsapp_status,
         "delivery_status": delivery_status,
         "meta_response_id": meta_response_id,

@@ -77,7 +77,6 @@ export async function sendSOS(
 ): Promise<EmergencySendResponse> {
   try {
     const headers = await getHeaders();
-    // Map to backend schema (SendSOSRequest)
     const lat = payload.latitude ?? 0.0;
     const lng = payload.longitude ?? 0.0;
     const backendPayload = {
@@ -89,17 +88,15 @@ export async function sendSOS(
       emergency_type: payload.type || 'General'
     };
     const res = await API.post('/emergency/send', backendPayload, { headers });
-    if (res.data && res.data.status === 'success') {
-      return {
-        status: 'success',
-        message: res.data.message || 'Emergency Alert Sent Successfully',
-        alert_id: res.data.data?.alert_id,
-        data: res.data.data
-      };
-    }
+    const resData = res.data?.data || {};
+    // The outer envelope `res.data.status` is always "success" for both real WhatsApp success
+    // and mocked mode. We must read the INNER status from `res.data.data.status` to distinguish.
+    const innerStatus: string = resData.status || 'failed';
     return {
-      status: 'failed',
-      message: res.data?.message || 'Failed to send SOS request.'
+      status: innerStatus,
+      message: res.data?.message || 'Emergency SOS processed.',
+      alert_id: resData.alert_id,
+      data: resData,
     };
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -108,21 +105,30 @@ export async function sendSOS(
         await clearAuth();
         throw new Error('Session expired. Please log in again.');
       }
-      
-      let msg = error.response?.data?.message || error.response?.data?.detail || error.message;
+
+      // For 502 failed responses, error_response puts extra info in `detail` (not `data`)
+      const resDetail = error.response?.data?.detail || {};
+      let msg =
+        resDetail.error_message ||
+        error.response?.data?.message ||
+        (typeof error.response?.data?.detail === 'string' ? error.response.data.detail : null) ||
+        error.message;
       if (error.response?.data?.error?.message) {
         msg = error.response.data.error.message;
       }
       return {
-        status: 'failed',
+        status: resDetail.status || error.response?.data?.status || 'failed',
         message: msg,
-        data: error.response?.data
+        alert_id: resDetail.alert_id,
+        data: {
+          whatsapp_status: 'failed',
+          delivery_status: 'failed',
+          ...resDetail,
+          error_message: msg,
+        },
       };
     }
-    return {
-      status: 'failed',
-      message: error instanceof Error ? error.message : 'Unknown connection error.'
-    };
+    throw error;
   }
 }
 

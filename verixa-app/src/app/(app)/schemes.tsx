@@ -147,22 +147,6 @@ export default function SchemesHomeScreen() {
             <Text style={styles.headerTitle}>{t('schemes_title')}</Text>
             <Text style={styles.headerSub}>{t('schemes_subtitle')}</Text>
           </View>
-
-          {/* Language Switcher */}
-          <View style={styles.langToggle}>
-            <TouchableOpacity
-              style={[styles.langBtn, language === SupportedLanguage.EN && styles.langBtnActive]}
-              onPress={() => handleLanguageToggle(SupportedLanguage.EN)}
-            >
-              <Text style={[styles.langBtnText, language === SupportedLanguage.EN && styles.langBtnTextActive]}>EN</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.langBtn, language === SupportedLanguage.TA && styles.langBtnActive]}
-              onPress={() => handleLanguageToggle(SupportedLanguage.TA)}
-            >
-              <Text style={[styles.langBtnText, language === SupportedLanguage.TA && styles.langBtnTextActive]}>தமிழ்</Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* ── Search Input ── */}
@@ -300,7 +284,7 @@ export default function SchemesHomeScreen() {
                   <View style={styles.cardHeaderRow}>
                     <View style={[styles.badgeLevel, isCentral ? styles.badgeCentral : styles.badgeTN]}>
                       <Text style={styles.badgeLevelText}>
-                        {isCentral ? '🏛️ Central Govt' : '🌾 Tamil Nadu Govt'}
+                        {isCentral ? t('schemes_badge_central') : t('schemes_badge_state_tn')}
                       </Text>
                     </View>
 
@@ -323,7 +307,7 @@ export default function SchemesHomeScreen() {
                     <Text style={styles.departmentText} numberOfLines={1}>
                       {getLoc(item.department)}
                     </Text>
-                    <Text style={styles.viewDetailsText}>View Details →</Text>
+                    <Text style={styles.viewDetailsText}>{t('schemes_view_details')}</Text>
                   </View>
                 </TouchableOpacity>
               );

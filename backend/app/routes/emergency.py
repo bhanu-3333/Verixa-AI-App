@@ -51,32 +51,48 @@ async def send_sos(
         maps_link=body.maps_link,
         emergency_type=body.emergency_type,
     )
-    if result["status"] == "failed":
-        err_msg = result.get("error_message") or "WhatsApp alert sending failed."
-        if "Authentication Failure" in err_msg or "AuthFailure" in err_msg:
-            return error_response(f"Authentication Failure: {err_msg}", status_code=401)
-        
-        try:
-            import json
-            meta_err = json.loads(err_msg)
-            from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=400, content=meta_err)
-        except Exception:
-            if "WhatsApp template variables do not match" in err_msg:
-                return error_response(err_msg, status_code=400)
-            return error_response(f"WhatsApp Alert Failed: {err_msg}", status_code=400)
 
-    return success_response(
-        message="Emergency WhatsApp alert sent successfully.",
-        data={
-            "alert_id": result["alert_id"],
-            "status": result["status"],
-            "whatsapp_status": result.get("whatsapp_status"),
-            "delivery_status": result.get("delivery_status"),
-            "meta_response_id": result.get("meta_response_id"),
-        },
-        status_code=200
-    )
+    if result["status"] == "success" and result.get("meta_response_id"):
+        return success_response(
+            message="Emergency WhatsApp alert accepted successfully.",
+            data={
+                "alert_id": result["alert_id"],
+                "record_status": result.get("record_status", "saved"),
+                "status": "success",
+                "whatsapp_status": "success",
+                "delivery_status": "accepted",
+                "meta_response_id": result["meta_response_id"],
+            },
+            status_code=200
+        )
+    elif result["status"] == "mocked":
+        return success_response(
+            message="Test Mode: SOS recorded, but no real WhatsApp message was sent.",
+            data={
+                "alert_id": result["alert_id"],
+                "record_status": result.get("record_status", "saved"),
+                "status": "mocked",
+                "whatsapp_status": "mocked",
+                "delivery_status": "mocked",
+                "meta_response_id": None,
+            },
+            status_code=200
+        )
+    else:
+        err_msg = result.get("error_message") or "Emergency alert recorded, but WhatsApp message failed to send."
+        return error_response(
+            message=f"WhatsApp Alert Failed: {err_msg}",
+            status_code=502,
+            detail={
+                "alert_id": result.get("alert_id"),
+                "record_status": result.get("record_status", "saved"),
+                "status": "failed",
+                "whatsapp_status": "failed",
+                "delivery_status": "failed",
+                "meta_response_id": None,
+                "error_message": err_msg,
+            }
+        )
 
 
 @router.get("/history", summary="Get SOS alert history (latest 20)")
