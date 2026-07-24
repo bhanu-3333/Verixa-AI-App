@@ -211,7 +211,8 @@ const ta: Record<string, string> = {
   emergency_alarm_active: 'அவசர அலாரம் செயலில் உள்ளது',
   emergency_stop_alarm: 'அலாரத்தை நிறுத்து',
   emergency_alert_sent: 'அவசர எச்சரிக்கை வெற்றிகரமாக அனுப்பப்பட்டது.',
-  emergency_alert_failed: 'அவசர எச்சரிக்கையை அனுப்ப முடியவில்லை. மீண்டும் முயலவும்.',
+  emergency_alert_failed: 'அவசர எச்சரிக்கை அனுப்ப முடியவில்லை. மீண்டும் முயற்சிக்கவும்.',
+  emergency_test_mode_text: 'சோதனை முறை — வாட்ஸ்அப் செய்தி அனுப்பப்படவில்லை.',
   emergency_sos_status: 'SOS நிலை',
 
   // ── Sign Phrases ───────────────────────────────────────────
@@ -265,6 +266,17 @@ const ta: Record<string, string> = {
   schemes_no_saved: 'சேமிக்கப்பட்ட திட்டங்கள் எதுவும் இல்லை. பின்னர் காண ♡ என்பதை அழுத்தவும்.',
   schemes_link_unavailable: 'அதிகாரப்பூர்வ விண்ணப்ப இணைப்பு தற்போது கிடைக்கவில்லை.',
   schemes_url_error: 'அதிகாரப்பூர்வ அரசு தளத்தை திறக்க முடியவில்லை.',
+  schemes_view_details: 'விவரங்களைக் காண்க →',
+  schemes_badge_central: '🏛️ மத்திய அரசு',
+  schemes_badge_state_tn: '🌾 தமிழ்நாடு அரசு',
+  schemes_verified_source: 'சரிபார்க்கப்பட்ட ஆதாரம்:',
+  schemes_last_verified: 'கடைசியாக சரிபார்க்கப்பட்டது:',
+  schemes_check_dates_hint: 'தற்போதைய விண்ணப்ப தேதிகளுக்கு அதிகாரப்பூர்வ தளத்தைப் பார்க்கவும்.',
+  schemes_disclaimer_title: 'முக்கிய அரசு மறுப்புரை',
+  schemes_official_portal: 'அதிகாரப்பூர்வ தளம்:',
+  schemes_security_warning: 'பாதுகாப்பு எச்சரிக்கை: அதிகாரப்பூர்வ HTTPS அரசு தளங்கள் மட்டுமே திறக்கப்படும்.',
+  schemes_not_found: 'திட்டம் பெறப்படவில்லை.',
+  schemes_load_error: 'திட்டங்களை ஏற்ற முடியவில்லை.',
 
 
   // ── Common ──────────────────────────────────────────────────
