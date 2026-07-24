@@ -22,6 +22,10 @@ import { useLanguage } from '../../components/LanguageProvider';
 import SignToTextDetector from '../../components/SignToTextDetector';
 import { recognizeAlphabet, getWordSuggestion } from '../../services/AlphabetRecognizer';
 import { recognizeGesture, getSupportedGestures, type GestureResult } from '../../services/GestureRecognizer';
+import { CommunicationModeSelector, CommunicationMode } from '../../components/communication/CommunicationModeSelector';
+import { SpeakReportPanel } from '../../components/communication/SpeakReportPanel';
+import { SignToTextVoicePanel } from '../../components/communication/SignToTextVoicePanel';
+import { TextVoiceToSignPanel } from '../../components/communication/TextVoiceToSignPanel';
 
 const C = {
   primary: '#208AEF',
@@ -120,15 +124,32 @@ export default function BankScreen() {
   // Form State
   const [formFields, setFormFields] = useState<Record<string, string>>({});
 
-  // Chat State
+  // Chat State (kept for session backend — not displayed in new UI)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [showAvatar, setShowAvatar] = useState(true);
-  const [showCamera, setShowCamera] = useState(false);
+
+  // Step 4 UI state
+  type BankCommMode = null | 'speak' | 'sign_to_text' | 'text_to_sign';
+  const [bankCommMode, setBankCommMode] = useState<BankCommMode>(null);
+
+  // Avatar preloading & readiness
+  const [avatarMounted, setAvatarMounted] = useState(false);
+  const [avatarReady, setAvatarReady] = useState(false);
+
+  // Speak Report
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  // Sign → Text
+  const [signRecognizedText, setSignRecognizedText] = useState<string | null>(null);
+  const [signRecognizing, setSignRecognizing] = useState(false);
+
+  // Text / Voice → Sign
+  const [staffInput, setStaffInput] = useState('');
+  const [sendingToSign, setSendingToSign] = useState(false);
   const [isListening, setIsListening] = useState(false);
 
-  // Hand tracking state (from SignToTextDetector)
+  // Hand tracking state (Sign→Text camera panel)
   const [detected, setDetected] = useState(false);
   const [recognitionMode, setRecognitionMode] = useState<'phrase' | 'alphabet'>('phrase');
   const [currentGesture, setCurrentGesture] = useState<GestureResult | null>(null);
@@ -153,6 +174,82 @@ export default function BankScreen() {
     { id: 'Fund Transfer', label: t('bank_service_fund_transfer') || 'Fund Transfer', icon: '💸' },
     { id: 'Block ATM', label: t('bank_service_block_atm') || 'Block ATM Card', icon: '💳' },
   ], [language, t]);
+
+  // ── Sensitive-field masking helpers ────────────────────────────────────────
+  const maskAadhaar = (v: string) => {
+    const d = v.replace(/\D/g, '');
+    return d.length >= 4 ? `XXXX XXXX ${d.slice(-4)}` : 'XXXX XXXX XXXX';
+  };
+  const maskAccount = (v: string) => {
+    const d = v.replace(/\D/g, '');
+    return d.length >= 4 ? `XXXXXX${d.slice(-4)}` : 'XXXXXXXXXX';
+  };
+  const maskCard = (v: string) => {
+    const d = v.replace(/\D/g, '');
+    return d.length >= 4 ? `XXXX XXXX XXXX ${d.slice(-4)}` : 'XXXX XXXX XXXX XXXX';
+  };
+
+  // ── Bank Service Report builder ─────────────────────────────────────────────
+  const buildBankReportRows = useCallback(() => {
+    const rows: { label: string; value: string; highlight?: boolean }[] = [];
+    const svc = SERVICES.find((s) => s.id === selectedService);
+    rows.push({ label: isTamil ? 'சேவை' : 'Service', value: svc?.label || selectedService });
+    rows.push({ label: isTamil ? 'வங்கி' : 'Bank', value: 'Verixa Smart Bank' });
+    rows.push({
+      label: isTamil ? 'நிலை' : 'Status',
+      value: isTamil ? 'ஊழியர் ஆய்வுக்கு தயார்' : 'Ready for Staff Review',
+      highlight: true,
+    });
+
+    if (selectedService === 'Create Account') {
+      if (formFields.name) rows.push({ label: isTamil ? 'பெயர்' : 'Name', value: formFields.name });
+      if (formFields.aadhaar) rows.push({ label: isTamil ? 'ஆதார்' : 'Aadhaar', value: maskAadhaar(formFields.aadhaar) });
+      if (formFields.pan) rows.push({ label: 'PAN', value: formFields.pan.toUpperCase() });
+      if (formFields.mobile) rows.push({ label: isTamil ? 'மொபைல்' : 'Mobile', value: formFields.mobile });
+    } else if (selectedService === 'Fund Transfer') {
+      if (formFields.beneficiary) rows.push({ label: isTamil ? 'பெறுவோர்' : 'Beneficiary', value: formFields.beneficiary });
+      if (formFields.account_number) rows.push({ label: isTamil ? 'கணக்கு' : 'Account', value: maskAccount(formFields.account_number) });
+      if (formFields.ifsc) rows.push({ label: 'IFSC', value: formFields.ifsc.toUpperCase() });
+      if (formFields.amount) rows.push({ label: isTamil ? 'தொகை' : 'Amount', value: `₹ ${formFields.amount}` });
+    } else if (selectedService === 'Block ATM') {
+      if (formFields.card_number) rows.push({ label: isTamil ? 'அட்டை' : 'Card', value: maskCard(formFields.card_number) });
+      if (formFields.reason) rows.push({ label: isTamil ? 'காரணம்' : 'Reason', value: formFields.reason });
+    }
+    return rows;
+  }, [selectedService, formFields, SERVICES, isTamil]);
+
+  const buildBankReportSpeech = useCallback(() => {
+    const svc = SERVICES.find((s) => s.id === selectedService);
+    const parts: string[] = [];
+    if (isTamil) {
+      parts.push(`வங்கி சேவை: ${svc?.label || selectedService}.`);
+      parts.push('வெரிக்ஸா ஸ்மார்ட் வங்கி.');
+      if (selectedService === 'Create Account') {
+        if (formFields.name) parts.push(`வாடிக்கையாளர் பெயர்: ${formFields.name}.`);
+        if (formFields.pan) parts.push(`பான் எண்: ${formFields.pan.toUpperCase()}.`);
+      } else if (selectedService === 'Fund Transfer') {
+        if (formFields.beneficiary) parts.push(`பெறுவோர்: ${formFields.beneficiary}.`);
+        if (formFields.amount) parts.push(`தொகை: ரூபாய் ${formFields.amount}.`);
+      } else if (selectedService === 'Block ATM') {
+        if (formFields.reason) parts.push(`தடுக்கும் காரணம்: ${formFields.reason}.`);
+      }
+      parts.push('ஊழியர் ஆய்வுக்கு தயார்.');
+    } else {
+      parts.push(`Banking service: ${svc?.label || selectedService}.`);
+      parts.push('Bank: Verixa Smart Bank.');
+      if (selectedService === 'Create Account') {
+        if (formFields.name) parts.push(`Customer name: ${formFields.name}.`);
+        if (formFields.pan) parts.push(`PAN number: ${formFields.pan.toUpperCase()}.`);
+      } else if (selectedService === 'Fund Transfer') {
+        if (formFields.beneficiary) parts.push(`Beneficiary: ${formFields.beneficiary}.`);
+        if (formFields.amount) parts.push(`Transfer amount: Rupees ${formFields.amount}.`);
+      } else if (selectedService === 'Block ATM') {
+        if (formFields.reason) parts.push(`Reason for blocking: ${formFields.reason}.`);
+      }
+      parts.push('Ready for bank staff review.');
+    }
+    return parts.join(' ');
+  }, [selectedService, formFields, SERVICES, isTamil]);
 
   // Step 2 Summary info mappings
   const getRequiredDocs = (srv: string) => {
@@ -326,7 +423,7 @@ export default function BankScreen() {
     return false;
   };
 
-  // Step 4 Initialization: Greeting and Starting Session
+  // Step 4 Initialization: Start backend session and proceed to report screen
   const initAIChatSession = async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -339,28 +436,10 @@ export default function BankScreen() {
       };
       const res = await startBankSession(payload);
       setSessionId(res.session_id);
-
-      const initialText = getGreetingMessage(selectedService);
-      const firstMsg: ChatMessage = {
-        role: 'assistant',
-        content: initialText,
-        timestamp: new Date().toISOString(),
-      };
-      setChatMessages([firstMsg]);
-
-      // Proceed to communication view
+      setBankCommMode(null);
       setStep(4);
-
-      // Play & speak initial greeting immediately
-      setTimeout(async () => {
-        await SpeechService.speak(initialText, isTamil ? 'ta-IN' : 'en-US');
-        try {
-          const sigml = await translateTextToSigml(initialText.toLowerCase());
-          avatarRef.current?.play(sigml);
-        } catch (err) {
-          console.warn('[Avatar] Failed to play greeting SiGML:', err);
-        }
-      }, 800);
+      // Preload avatar in background immediately
+      setAvatarMounted(true);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to start banking session.');
     } finally {
@@ -368,104 +447,85 @@ export default function BankScreen() {
     }
   };
 
-  // Chat message sender
-  const handleSendChatMessage = async (msgContent = chatInput) => {
-    if (!msgContent.trim() || !sessionId) return;
+  // Speak the Bank Report (TTS)
+  const handleSpeakReport = useCallback(async () => {
+    setIsSpeaking(true);
+    const text = buildBankReportSpeech();
+    await SpeechService.speak(text, isTamil ? 'ta-IN' : 'en-US');
+    setIsSpeaking(false);
+  }, [buildBankReportSpeech, isTamil]);
 
-    const userMsg: ChatMessage = {
-      role: 'user',
-      content: msgContent.trim(),
-      timestamp: new Date().toISOString(),
-    };
-    setChatMessages((prev) => [...prev, userMsg]);
-    setChatInput('');
-    setChatLoading(true);
-    setErrorMsg(null);
+  const handleStopSpeaking = useCallback(async () => {
+    await SpeechService.stop();
+    setIsSpeaking(false);
+  }, []);
 
+  // Text / Voice → Sign: send typed or voice-captured message to avatar
+  const handleSendTextToSign = useCallback(async () => {
+    if (!staffInput.trim()) return;
+    const text = staffInput.trim();
+    setStaffInput('');
+    setSendingToSign(true);
     try {
-      const payload = {
-        user_id: user?.id || 'guest_user',
-        session_id: sessionId,
-        message: userMsg.content,
-        language: language,
-      };
-      const res = await sendBankMessage(payload);
-
-      const assistantMsg: ChatMessage = {
-        role: 'assistant',
-        content: res.response_text,
-        timestamp: new Date().toISOString(),
-      };
-      setChatMessages((prev) => [...prev, assistantMsg]);
-
-      // Speak assistant response
-      await SpeechService.speak(res.response_text, isTamil ? 'ta-IN' : 'en-US');
-
-      // Avatar interpret animation
-      try {
-        const sigml = await translateTextToSigml(res.response_text.toLowerCase());
-        avatarRef.current?.play(sigml);
-      } catch (_) {}
+      const sigml = await translateTextToSigml(text.toLowerCase());
+      avatarRef.current?.play(sigml);
+      if (sessionId) {
+        sendBankMessage({
+          user_id: user?.id || 'guest_user',
+          session_id: sessionId,
+          message: text,
+          language,
+        }).catch(() => {});
+      }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to send chat message.');
+      console.warn('[BankScreen] SiGML error:', err);
     } finally {
-      setChatLoading(false);
+      setSendingToSign(false);
     }
-  };
+  }, [staffInput, sessionId, user, language]);
 
-  // Browser Speech-to-Text handler (Voice input)
-  const handleVoiceInput = () => {
-    if (isListening) {
-      setIsListening(false);
-      return;
-    }
-
+  // Voice input for Text/Voice → Sign panel (Browser STT)
+  const handleVoiceInput = useCallback(() => {
+    if (isListening) { setIsListening(false); return; }
     if (Platform.OS === 'web' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-      const SpeechReg = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      const rec = new SpeechReg();
+      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const rec = new SR();
       rec.lang = isTamil ? 'ta-IN' : 'en-US';
       rec.interimResults = false;
       rec.maxAlternatives = 1;
-
       rec.onstart = () => setIsListening(true);
       rec.onend = () => setIsListening(false);
-      rec.onerror = (e: any) => {
-        console.error('[SpeechRecognition] Error:', e);
-        setIsListening(false);
-      };
+      rec.onerror = () => setIsListening(false);
       rec.onresult = (event: any) => {
-        const spokenText = event.results[0][0].transcript;
-        if (spokenText) {
-          handleSendChatMessage(spokenText);
-        }
+        const spoken = event.results[0][0].transcript;
+        if (spoken) setStaffInput(spoken);
       };
       rec.start();
     } else {
-      // Direct Native mock / alert
-      setErrorMsg('Voice transcription is supported on Web browsers. Simulating voice input...');
+      // Native fallback
+      setIsListening(true);
       setTimeout(() => {
-        setErrorMsg(null);
-        handleSendChatMessage(isTamil ? 'வங்கி சேவை நிலவரம் என்ன?' : 'How is the transaction status?');
+        setIsListening(false);
+        setStaffInput(isTamil ? 'வணக்கம், உங்கள் சேவை தொடர்கிறது' : 'Hello, your service is being processed');
       }, 1500);
     }
-  };
+  }, [isListening, isTamil]);
 
-  // Hand gesture camera callbacks (Sign to Text)
+  // Hand gesture camera callbacks (Sign → Text panel)
   const handleHandDetected = useCallback((landmarks: any[]) => {
     setDetected(true);
+    setSignRecognizing(true);
     if (recognitionMode === 'phrase') {
       const result = recognizeGesture(landmarks);
       setCurrentGesture(result);
       const candidate = result.word;
-
       if (candidate) {
         if (candidate !== lastCandidateRef.current) {
           if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
           lastCandidateRef.current = candidate;
-
           if (candidate !== lastConfirmedRef.current) {
             holdTimerRef.current = setTimeout(() => {
-              setChatInput((prev) => (prev ? prev + ' ' + candidate : candidate));
+              setSignRecognizedText((prev) => (prev ? prev + ' ' + candidate : candidate));
               lastConfirmedRef.current = candidate;
             }, 800);
           }
@@ -480,13 +540,11 @@ export default function BankScreen() {
       setCurrentLetter(letter);
       setCurrentLetterConfidence(confidence);
       setCurrentGesture(null);
-
       const candidate = confidence >= 0.7 ? letter : null;
       if (candidate) {
         if (candidate !== lastCandidateRef.current) {
           if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
           lastCandidateRef.current = candidate;
-
           if (candidate !== lastConfirmedRef.current) {
             holdTimerRef.current = setTimeout(() => {
               setCurrentWord((prev) => prev + candidate);
@@ -503,6 +561,7 @@ export default function BankScreen() {
 
   const handleHandNotDetected = useCallback(() => {
     setDetected(false);
+    setSignRecognizing(false);
     setCurrentGesture(null);
     setCurrentLetter(null);
     setCurrentLetterConfidence(0);
@@ -513,7 +572,7 @@ export default function BankScreen() {
 
   const handleAlphabetConfirmWord = () => {
     if (currentWord.trim()) {
-      setChatInput((prev) => (prev ? prev + ' ' + currentWord.trim() : currentWord.trim()));
+      setSignRecognizedText((prev) => (prev ? prev + ' ' + currentWord.trim() : currentWord.trim()));
       setCurrentWord('');
     }
   };
@@ -670,171 +729,112 @@ export default function BankScreen() {
           </View>
         )}
 
-        {/* STEP 4: AI Communication Panel */}
+        {/* STEP 4: Bank Service Report + 3 Communication Options */}
         {step === 4 && (
           <View style={styles.chatSection}>
-            {/* SiGML Interpreter Avatar */}
-            {showAvatar && (
-              <View style={styles.avatarCard}>
-                <View style={styles.avatarHeader}>
-                  <Text style={styles.avatarTitle}>🤟 {isTamil ? t('bank_chat_avatar_title') : 'Sign Language Interpreter'}</Text>
-                  <TouchableOpacity onPress={() => setShowAvatar(false)}>
-                    <Text style={styles.closeBtn}>{isTamil ? t('bank_chat_close') : 'Close ×'}</Text>
-                  </TouchableOpacity>
-                </View>
-                <SignLanguageAvatar ref={avatarRef} initialAvatar="anna" />
-              </View>
-            )}
-
-            {/* Gesture Input Camera */}
-            {showCamera && (
-              <View style={styles.avatarCard}>
-                <View style={styles.avatarHeader}>
-                  <Text style={styles.avatarTitle}>📷 Sign Translation Camera</Text>
-                  <TouchableOpacity onPress={() => setShowCamera(false)}>
-                    <Text style={styles.closeBtn}>{isTamil ? t('bank_chat_close') : 'Close ×'}</Text>
-                  </TouchableOpacity>
-                </View>
-                
-                <View style={styles.cameraRow}>
-                  <TouchableOpacity 
-                    style={[styles.modeBtn, recognitionMode === 'phrase' && styles.modeBtnActive]}
-                    onPress={() => setRecognitionMode('phrase')}
-                  >
-                    <Text style={styles.modeBtnText}>Phrase Mode</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.modeBtn, recognitionMode === 'alphabet' && styles.modeBtnActive]}
-                    onPress={() => setRecognitionMode('alphabet')}
-                  >
-                    <Text style={styles.modeBtnText}>Alphabet Mode</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.cameraBox}>
-                  <SignToTextDetector 
-                    onHandDetected={handleHandDetected}
-                    onHandNotDetected={handleHandNotDetected}
+            {/* ── Background-preloaded avatar (hidden until Option 3 selected) ── */}
+            {avatarMounted && (
+              <View style={{ height: bankCommMode === 'text_to_sign' ? undefined : 0, overflow: 'hidden' }}>
+                <View style={styles.avatarCard}>
+                  <View style={styles.avatarHeader}>
+                    <Text style={styles.avatarTitle}>🤟 {isTamil ? 'குறியீட்டு மொழி அவதார்' : 'Sign Language Avatar'}</Text>
+                    {avatarReady && <Text style={styles.avatarReadyBadge}>● {isTamil ? 'தயார்' : 'Ready'}</Text>}
+                  </View>
+                  <SignLanguageAvatar
+                    ref={avatarRef}
+                    initialAvatar="anna"
+                    preload
+                    onReady={() => setAvatarReady(true)}
+                    onError={(msg) => console.warn('[Bank Avatar]', msg)}
                   />
                 </View>
-
-                {/* Tracking status details */}
-                <View style={styles.trackingStatus}>
-                  {recognitionMode === 'phrase' ? (
-                    <>
-                      <Text style={styles.trackingTitle}>Detected Gesture:</Text>
-                      <Text style={styles.trackingWord}>
-                        {detected && currentGesture?.word ? currentGesture.word : 'No gesture detected'}
-                      </Text>
-                      <Text style={styles.supportedHint}>
-                        Supported: Hello, Thank You, Please, Stop, Yes, No, Okay, Help...
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={styles.trackingTitle}>Letter / Word Building:</Text>
-                      <Text style={styles.trackingWord}>
-                        {currentWord || 'Type letters...'} {detected && currentLetter ? `[${currentLetter}]` : ''}
-                      </Text>
-                      <View style={styles.btnRow}>
-                        <TouchableOpacity style={styles.actionMinBtn} onPress={() => setCurrentWord(prev => prev.slice(0, -1))}>
-                          <Text style={styles.actionMinBtnText}>Del</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionMinBtn} onPress={() => setCurrentWord('')}>
-                          <Text style={styles.actionMinBtnText}>Clear</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={[styles.actionMinBtn, styles.actionMinBtnSubmit]} onPress={handleAlphabetConfirmWord}>
-                          <Text style={styles.actionMinBtnText}>Confirm</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </>
-                  )}
-                </View>
               </View>
             )}
 
-            {/* Chat Thread */}
-            <View style={styles.card}>
-              <View style={styles.chatHeader}>
-                <Text style={styles.sectionTitle}>💬 {isTamil ? t('bank_chat_title') : 'AI Assistant Chat'}</Text>
-                <View style={styles.chatButtons}>
-                  {!showAvatar && (
-                    <TouchableOpacity onPress={() => setShowAvatar(true)} style={styles.toggleBtn}>
-                      <Text style={styles.toggleBtnText}>Show Avatar</Text>
-                    </TouchableOpacity>
-                  )}
-                  {!showCamera && (
-                    <TouchableOpacity onPress={() => setShowCamera(true)} style={styles.toggleBtn}>
-                      <Text style={styles.toggleBtnText}>Show Camera</Text>
-                    </TouchableOpacity>
-                  )}
+            {/* ── Bank Service Report Card ── */}
+            <View style={styles.reportCard}>
+              <View style={styles.reportHeader}>
+                <Text style={styles.reportHeaderIcon}>🏦</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reportTitle}>{isTamil ? 'வங்கி சேவை அறிக்கை' : 'Bank Service Report'}</Text>
+                  <Text style={styles.reportDate}>{new Date().toLocaleString()}</Text>
                 </View>
               </View>
-
-              <View style={styles.chatList}>
-                {chatMessages.map((msg, idx) => {
-                  const isUser = msg.role === 'user';
-                  return (
-                    <View
-                      key={idx}
-                      style={[
-                        styles.chatBubble,
-                        isUser ? styles.chatBubbleUser : styles.chatBubbleAssistant,
-                      ]}
-                    >
-                      <Text style={styles.chatBubbleText}>{msg.content}</Text>
-                      {msg.timestamp && (
-                        <Text style={styles.chatBubbleTime}>
-                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
-                      )}
-                    </View>
-                  );
-                })}
-                {chatLoading && (
-                  <View style={[styles.chatBubble, styles.chatBubbleAssistant, styles.loadingBubble]}>
-                    <ActivityIndicator size="small" color={C.primary} />
+              <View style={styles.reportDivider} />
+              {buildBankReportRows().map((row, i) => (
+                <View key={i}>
+                  <View style={styles.reportRow}>
+                    <Text style={styles.reportLabel}>{row.label}</Text>
+                    <Text style={[styles.reportValue, row.highlight && styles.reportValueHighlight]}>
+                      {row.value}
+                    </Text>
                   </View>
-                )}
+                  {i < buildBankReportRows().length - 1 && <View style={styles.reportRowDivider} />}
+                </View>
+              ))}
+              <View style={styles.reportSecurityNote}>
+                <Text style={styles.reportSecurityText}>
+                  🔒 {isTamil ? 'முக்கிய தரவு மறைக்கப்பட்டுள்ளது. ரகசிய எண்கள் காட்டப்படாது.' : 'Sensitive data is masked. Secrets are never displayed or spoken.'}
+                </Text>
               </View>
-
-              {/* Message Composer */}
-              <View style={styles.composer}>
-                <TextInput
-                  style={styles.chatInput}
-                  value={chatInput}
-                  onChangeText={setChatInput}
-                  placeholder={isTamil ? t('bank_chat_placeholder') : 'Type your message...'}
-                  placeholderTextColor="#64748b"
-                />
-                
-                {/* Voice capture mic button */}
-                <TouchableOpacity
-                  style={[styles.iconBtn, isListening && styles.listeningBtn]}
-                  onPress={handleVoiceInput}
-                >
-                  <Text style={styles.btnIconText}>{isListening ? '🎙' : '🎤'}</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.sendBtn, (!chatInput.trim() || chatLoading) && styles.sendBtnDisabled]}
-                  disabled={!chatInput.trim() || chatLoading}
-                  onPress={() => handleSendChatMessage()}
-                >
-                  <Text style={styles.sendBtnText}>{isTamil ? t('bank_chat_send') : 'Send'}</Text>
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.primaryButton, styles.completeBtn]}
-                onPress={handleCompleteSession}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.primaryButtonText}>{isTamil ? t('bank_complete_session') : 'Complete Session'}</Text>
-              </TouchableOpacity>
             </View>
+
+            {/* ── 3 Communication Option Selector ── */}
+            <CommunicationModeSelector
+              currentMode={bankCommMode}
+              onSelectMode={(mode) => {
+                setBankCommMode(mode);
+                if (mode === 'text_to_sign' && !avatarMounted) {
+                  setAvatarMounted(true);
+                }
+              }}
+              domain="bank"
+            />
+
+            {/* ── Option 1: Speak Out Report Panel ── */}
+            {bankCommMode === 'speak' && (
+              <SpeakReportPanel reportSpeechText={buildBankReportSpeech()} />
+            )}
+
+            {/* ── Option 2: Sign Language → Text / Voice Panel ── */}
+            {bankCommMode === 'sign_to_text' && (
+              <SignToTextVoicePanel staffType="staff" />
+            )}
+
+            {/* ── Option 3: Text / Voice → Sign Language Panel ── */}
+            {bankCommMode === 'text_to_sign' && (
+              <TextVoiceToSignPanel
+                avatarRef={avatarRef}
+                avatarReady={avatarReady}
+                staffType="staff"
+                onSendTextMessage={(msg) => {
+                  if (sessionId) {
+                    sendBankMessage({
+                      user_id: user?.id || 'guest_user',
+                      session_id: sessionId,
+                      message: msg,
+                      language,
+                    }).catch(() => {});
+                  }
+                }}
+              />
+            )}
+
+            {/* ── Complete Banking Service Button ── */}
+            <TouchableOpacity
+              style={[styles.primaryButton, styles.completeBtn]}
+              onPress={handleCompleteSession}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.primaryButtonText}>
+                ✅ {isTamil ? 'வங்கி சேவையை முடிக்கவும்' : 'Complete Banking Service'}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
+
+
+
 
         {/* STEP 5: Success Completed Screen */}
         {step === 5 && (
@@ -1266,5 +1266,83 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
+  },
+  // ── Bank Service Report Card Styles ──────────────────────────────────────
+  avatarReadyBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#10B981',
+  },
+  reportCard: {
+    backgroundColor: '#151D30',
+    borderRadius: 14,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#1E293B',
+  },
+  reportHeader: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+    marginBottom: 12,
+  },
+  reportHeaderIcon: {
+    fontSize: 28,
+  },
+  reportTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#F1F5F9',
+  },
+  reportDate: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  reportDivider: {
+    height: 1,
+    backgroundColor: '#1E293B',
+    marginBottom: 12,
+  },
+  reportRow: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'flex-start' as const,
+    paddingVertical: 8,
+  },
+  reportLabel: {
+    fontSize: 13,
+    color: '#94A3B8',
+    fontWeight: '500',
+    flex: 0.4,
+  },
+  reportValue: {
+    fontSize: 14,
+    color: '#F1F5F9',
+    fontWeight: '600',
+    flex: 0.6,
+    textAlign: 'right' as const,
+  },
+  reportValueHighlight: {
+    color: '#10B981',
+  },
+  reportRowDivider: {
+    height: 1,
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+  },
+  reportSecurityNote: {
+    marginTop: 14,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderRadius: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.2)',
+  },
+  reportSecurityText: {
+    fontSize: 11,
+    color: '#10B981',
+    fontWeight: '500',
+    lineHeight: 16,
   },
 });
