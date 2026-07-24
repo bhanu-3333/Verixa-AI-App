@@ -227,7 +227,7 @@ export default function EmergencyActiveScreen() {
             'Use this alarm if you need immediate attention from people nearby.'}
         </Text>
 
-        {/* Alarm Toggle Button (Trigger Alarm <-> Stop Alarm) */}
+        {/* Alarm Toggle Button (Activate Alarm <-> Stop Alarm) */}
         <TouchableOpacity
           style={[styles.mainAlarmBtn, alarmState.alarmActive && styles.stopAlarmBtn]}
           onPress={handleToggleAlarm}
@@ -238,16 +238,32 @@ export default function EmergencyActiveScreen() {
             {alarmState.alarmLoading
               ? t('loading') || 'Loading...'
               : alarmState.alarmActive
-              ? `⏹ ${t('emergency_stop_alarm') || 'STOP ALARM'}`
-              : `🔊 ${t('emergency_trigger_alarm') || 'TRIGGER EMERGENCY ALARM'}`}
+              ? `⏹ STOP EMERGENCY ALARM`
+              : `🔊 ACTIVATE EMERGENCY ALARM`}
           </Text>
         </TouchableOpacity>
 
-        {/* Autoplay / Playback Error Warning */}
-        {alarmState.alarmError && (
+        {/* Live Active Status Indicators (Siren Active / Vibration Active) */}
+        {alarmState.alarmActive && (
+          <View style={styles.statusRowContainer}>
+            <View style={[styles.miniStatusBadge, alarmState.sirenAudioPlaying ? styles.greenMiniBadge : styles.orangeMiniBadge]}>
+              <Text style={styles.miniStatusText}>
+                {alarmState.sirenAudioPlaying ? '🔊 Siren Active' : '⚠️ Siren Audio Failed'}
+              </Text>
+            </View>
+            <View style={[styles.miniStatusBadge, alarmState.vibrationActive ? styles.greenMiniBadge : styles.grayMiniBadge]}>
+              <Text style={styles.miniStatusText}>
+                {alarmState.vibrationActive ? '📳 Vibration Active' : '📳 Vibration Stopped'}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Playback Error Warning */}
+        {alarmState.alarmError && alarmState.errorMessage && (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>
-              ⚠️ {alarmState.errorMessage || 'Failed to start local emergency alarm playback.'}
+              ⚠️ {alarmState.errorMessage}
             </Text>
           </View>
         )}
@@ -442,5 +458,35 @@ const styles = StyleSheet.create({
     color: '#ff8a80',
     fontSize: 13,
     textAlign: 'center',
+  },
+  statusRowContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 16,
+  },
+  miniStatusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  greenMiniBadge: {
+    backgroundColor: '#0d2818',
+    borderColor: '#3fb950',
+  },
+  orangeMiniBadge: {
+    backgroundColor: '#2d1800',
+    borderColor: '#f0883e',
+  },
+  grayMiniBadge: {
+    backgroundColor: '#161b22',
+    borderColor: '#30363d',
+  },
+  miniStatusText: {
+    color: '#f0f6fc',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });
