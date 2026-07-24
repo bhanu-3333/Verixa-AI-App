@@ -86,7 +86,7 @@ export default function SchemeDetailScreen() {
     const desc = getLoc(scheme.shortDescription);
     const url = scheme.officialApplyUrl || scheme.officialInfoUrl;
 
-    const message = `${name}\n\n${desc}\n\nOfficial Portal: ${url}`;
+    const message = `${name}\n\n${desc}\n\n${t('schemes_official_portal')} ${url}`;
     try {
       await Share.share({
         title: name,
@@ -107,7 +107,7 @@ export default function SchemeDetailScreen() {
     const trimmedUrl = targetUrl.trim();
     // Validate HTTPS protocol
     if (!trimmedUrl.toLowerCase().startsWith('https://')) {
-      alert('Security Warning: Only official HTTPS government portals can be opened.');
+      alert(t('schemes_security_warning'));
       return;
     }
 
@@ -158,7 +158,7 @@ export default function SchemeDetailScreen() {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>⚠️ {errorMsg || 'Scheme not found.'}</Text>
+          <Text style={styles.errorText}>⚠️ {errorMsg || t('schemes_not_found')}</Text>
           <TouchableOpacity style={styles.backBtnError} onPress={goBack}>
             <Text style={styles.backBtnErrorText}>‹ {t('bank_back')}</Text>
           </TouchableOpacity>
@@ -193,22 +193,6 @@ export default function SchemeDetailScreen() {
             <TouchableOpacity style={styles.iconActionBtn} onPress={handleShare}>
               <Text style={styles.iconActionText}>🔗 {t('schemes_share')}</Text>
             </TouchableOpacity>
-
-            {/* Language Switcher */}
-            <View style={styles.langToggle}>
-              <TouchableOpacity
-                style={[styles.langBtn, language === SupportedLanguage.EN && styles.langBtnActive]}
-                onPress={() => handleLanguageToggle(SupportedLanguage.EN)}
-              >
-                <Text style={[styles.langBtnText, language === SupportedLanguage.EN && styles.langBtnTextActive]}>EN</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.langBtn, language === SupportedLanguage.TA && styles.langBtnActive]}
-                onPress={() => handleLanguageToggle(SupportedLanguage.TA)}
-              >
-                <Text style={[styles.langBtnText, language === SupportedLanguage.TA && styles.langBtnTextActive]}>தமிழ்</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
 
@@ -219,12 +203,14 @@ export default function SchemeDetailScreen() {
             <View style={styles.badgesRow}>
               <View style={[styles.badgeLevel, isCentral ? styles.badgeCentral : styles.badgeTN]}>
                 <Text style={styles.badgeLevelText}>
-                  {isCentral ? '🏛️ Central Government' : '🌾 Tamil Nadu Government'}
+                  {isCentral ? t('schemes_badge_central') : t('schemes_badge_state_tn')}
                 </Text>
               </View>
 
               <View style={styles.badgeStatus}>
-                <Text style={styles.badgeStatusText}>{scheme.status}</Text>
+                <Text style={styles.badgeStatusText}>
+                  {scheme.status === 'Active' ? t('home_active') : scheme.status}
+                </Text>
               </View>
             </View>
 
@@ -232,8 +218,8 @@ export default function SchemeDetailScreen() {
             <Text style={styles.schemeShortDesc}>{getLoc(scheme.shortDescription)}</Text>
 
             <View style={styles.sourceMetaRow}>
-              <Text style={styles.sourceMetaText}>Verified Source: {scheme.sourceName}</Text>
-              <Text style={styles.sourceMetaText}>Last Verified: {scheme.lastVerifiedAt}</Text>
+              <Text style={styles.sourceMetaText}>{t('schemes_verified_source')} {scheme.sourceName}</Text>
+              <Text style={styles.sourceMetaText}>{t('schemes_last_verified')} {scheme.lastVerifiedAt}</Text>
             </View>
           </View>
 
@@ -307,13 +293,13 @@ export default function SchemeDetailScreen() {
             <Text style={styles.sectionBody}>
               {scheme.importantDates
                 ? getLoc(scheme.importantDates)
-                : 'Please check the official portal for current application dates.'}
+                : t('schemes_check_dates_hint')}
             </Text>
           </View>
 
           {/* Disclaimer Box */}
           <View style={styles.disclaimerBox}>
-            <Text style={styles.disclaimerTitle}>⚠️ Important Government Disclaimer</Text>
+            <Text style={styles.disclaimerTitle}>⚠️ {t('schemes_disclaimer_title')}</Text>
             <Text style={styles.disclaimerBody}>{t('schemes_disclaimer')}</Text>
           </View>
 
