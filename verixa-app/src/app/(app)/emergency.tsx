@@ -143,27 +143,37 @@ export default function EmergencyScreen() {
       const res = await sendSOS(payload);
       const isWeb = Platform.OS === 'web';
 
-      // Check if backend confirmed successful WhatsApp sending
-      if (res.status === 'success' || res.status === 'sent') {
+      const isRealWhatsAppSuccess =
+        res.status === 'success' &&
+        res.data?.whatsapp_status === 'success' &&
+        res.data?.delivery_status === 'accepted' &&
+        Boolean(res.data?.meta_response_id);
+
+      const isMocked =
+        res.status === 'mocked' ||
+        res.data?.whatsapp_status === 'mocked' ||
+        res.data?.delivery_status === 'mocked';
+
+      const mapsLink = location
+        ? `https://www.google.com/maps?q=${location.latitude},${location.longitude}&ll=${location.latitude},${location.longitude}&z=17`
+        : '';
+
+      const navigateToActiveScreen = () => {
+        router.push({
+          pathname: '/(app)/emergency-active' as any,
+          params: {
+            alert_id: res.alert_id || '',
+            emergency_type: emergencyType,
+            latitude: location.latitude.toString(),
+            longitude: location.longitude.toString(),
+            maps_link: mapsLink,
+          },
+        });
+      };
+
+      if (isRealWhatsAppSuccess) {
         setSuccess(true);
-        const alertMsg = t('emergency_alert_sent') || t('emergency_success_text') || 'Emergency alert sent successfully.';
-
-        const mapsLink = location
-          ? `https://www.google.com/maps?q=${location.latitude},${location.longitude}&ll=${location.latitude},${location.longitude}&z=17`
-          : '';
-
-        const navigateToActiveScreen = () => {
-          router.push({
-            pathname: '/(app)/emergency-active' as any,
-            params: {
-              alert_id: res.alert_id || '',
-              emergency_type: emergencyType,
-              latitude: location.latitude.toString(),
-              longitude: location.longitude.toString(),
-              maps_link: mapsLink,
-            },
-          });
-        };
+        const alertMsg = t('emergency_alert_sent') || 'Emergency WhatsApp alert sent successfully.';
 
         if (isWeb) {
           window.alert('✅ ' + alertMsg);
@@ -175,9 +185,23 @@ export default function EmergencyScreen() {
             [{ text: t('ok') || 'OK', onPress: navigateToActiveScreen }]
           );
         }
+      } else if (isMocked) {
+        setSuccess(false);
+        const mockMsg = t('emergency_test_mode_text') || 'Test Mode — No real WhatsApp message was sent.';
+
+        if (isWeb) {
+          window.alert('⚠️ ' + mockMsg);
+          navigateToActiveScreen();
+        } else {
+          Alert.alert(
+            '⚠️ ' + (t('emergency_title') || 'Emergency Alert (Test Mode)'),
+            mockMsg,
+            [{ text: t('ok') || 'OK', onPress: navigateToActiveScreen }]
+          );
+        }
       } else {
         setSuccess(false);
-        const errMsg = res.message || t('emergency_alert_failed') || 'Emergency alert could not be sent. Please try again.';
+        const errMsg = res.message || res.data?.error_message || t('emergency_alert_failed') || 'Emergency alert could not be sent. Please try again.';
         if (isWeb) {
           window.alert('❌ ' + (t('emergency_failed_popup_title') || 'SOS Failed') + ': ' + errMsg);
         } else {
