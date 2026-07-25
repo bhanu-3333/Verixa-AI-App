@@ -39,6 +39,7 @@ const COOLDOWN_DURATION_MS = 2000;   // 2-second cooldown after a confirmed comp
 const INFERENCE_INTERVAL_MS = 300;   // Fast sliding-window inference (300ms) to evaluate 5 consecutive predictions
 const STABILITY_WINDOW = 5;          // Require 5 sliding windows for prediction confirmation
 const STABILITY_REQUIRED = 5;        // Require 5 consecutive identical predictions
+const DISPLAY_DELAY_MS = 1500;        // 1.5s delay after sign completion before showing result
 
 const PHRASES = [
   "WHEN_SHOULD_I_TAKE_MY_TABLETS",
@@ -209,29 +210,34 @@ export default function SignToTextScreen() {
       }
 
       // ── CONFIRMED SIGN COMPLETION ──────────────────────────────────────
-      const phraseText = t(getLocKey(topPhrase));
-
-      // Display recognized text ONLY NOW after sign completion
-      setStablePhrase(topPhrase);
-      setSentence((prev) => [...prev, phraseText]);
-      setTranscript((prev) => [phraseText, ...prev].slice(0, 30));
-
-      // Speak ONCE automatically
-      setPredictionMessage('Speaking...');
-      SpeechService.speak(phraseText);
-
-      // Trigger 2-second cooldown to suppress continuous repeat
+      // Lock the inference loop while we wait for the display delay
       cooldownRef.current = true;
-      setTimeout(() => {
-        cooldownRef.current = false;
-        setStablePhrase(null); // clear display after cooldown
-        setPredictionMessage('Show your sign...');
-      }, COOLDOWN_DURATION_MS);
-
-      // Reset sliding window and frame queue for next sign
       recentPredictionsRef.current = [];
       landmarkQueueRef.current = [];
       setFrameCount(0);
+
+      // Show "Processing Sign..." for 1.5 seconds — DO NOT display text yet
+      setPredictionMessage('Processing Sign...');
+
+      setTimeout(() => {
+        const phraseText = t(getLocKey(topPhrase));
+
+        // Display recognized text after the delay
+        setStablePhrase(topPhrase);
+        setSentence((prev) => [...prev, phraseText]);
+        setTranscript((prev) => [phraseText, ...prev].slice(0, 30));
+
+        // Speak ONCE after the delay
+        setPredictionMessage('Speaking...');
+        SpeechService.speak(phraseText);
+
+        // Start the 2-second cooldown AFTER speaking
+        setTimeout(() => {
+          cooldownRef.current = false;
+          setStablePhrase(null); // clear display after cooldown
+          setPredictionMessage('Show your sign...');
+        }, COOLDOWN_DURATION_MS);
+      }, DISPLAY_DELAY_MS);
 
     } catch (err: any) {
       console.warn('[SignToText] Prediction API failed:', err);
