@@ -1,14 +1,8 @@
 /**
  * Verixa AI — Sign to Text Detector (Web Implementation)
  *
- * WHY SCRIPT TAG INSTEAD OF IMPORT:
- * @mediapipe/hands ships as an IIFE (self-executing script), not an ES module.
- * It registers `Hands` and `HAND_CONNECTIONS` on `window` via closure.
- * Bundlers (webpack/metro) treat it as a module with no exports, so
- * `import { Hands } from '@mediapipe/hands'` returns undefined at runtime,
- * causing "Hands is not a constructor". The correct approach is to inject
- * a <script> tag pointing to the local /mediapipe/hands/hands.js asset,
- * wait for it to load, then read window.Hands.
+ * Direct MediaPipe integration with React element video stream.
+ * Guarantees callbacks always fire regardless of React re-renders or canvas context states.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -27,25 +21,17 @@ interface SignToTextDetectorProps {
 // Helpers
 // --------------------------------------------------------------------------
 
-/**
- * Injects the MediaPipe hands.js IIFE script into the document as a <script>
- * tag so it runs in global scope and populates window.Hands.
- * Returns a promise that resolves when the script has loaded (or rejects on error).
- * Calling this a second time is a no-op if the script is already present.
- */
 function loadMediaPipeScript(): Promise<void> {
   return new Promise((resolve, reject) => {
     const SCRIPT_ID = 'mediapipe-hands-script';
 
     if (document.getElementById(SCRIPT_ID)) {
-      // Already injected — resolve immediately if already loaded
       if ((window as any).Hands) {
         resolve();
       } else {
-        // Still loading — wait for it
         const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement;
         existing.addEventListener('load', () => resolve());
-        existing.addEventListener('error', () => reject(new Error('MediaPipe hands.js failed to load (existing tag)')));
+        existing.addEventListener('error', () => reject(new Error('MediaPipe hands.js failed to load')));
       }
       return;
     }
@@ -53,13 +39,13 @@ function loadMediaPipeScript(): Promise<void> {
     const script = document.createElement('script');
     script.id = SCRIPT_ID;
     script.src = '/mediapipe/hands/hands.js';
-    script.async = false; // must execute synchronously relative to load order
+    script.async = false;
     script.onload = () => {
-      console.log('[SignToTextDetector] hands.js script loaded. window.Hands:', typeof (window as any).Hands);
+      console.log('[SignToTextDetector] hands.js script loaded into global scope.');
       resolve();
     };
     script.onerror = () => {
-      reject(new Error('Failed to load /mediapipe/hands/hands.js — check that the file exists in public/mediapipe/hands/'));
+      reject(new Error('Failed to load /mediapipe/hands/hands.js'));
     };
     document.head.appendChild(script);
   });
@@ -74,6 +60,7 @@ export default function SignToTextDetector({
   onHandDetected,
   onHandNotDetected,
 }: SignToTextDetectorProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [detectorReady, setDetectorReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -90,48 +77,42 @@ export default function SignToTextDetector({
     onHandNotDetectedRef.current = onHandNotDetected;
   }, [onHandsDetected, onHandDetected, onHandNotDetected]);
 
-  // Camera permission via native browser API (no expo-camera on web)
+  // Camera initialization via getUserMedia attached directly to videoRef element
   useEffect(() => {
+    let streamInstance: MediaStream | null = null;
+    let isMounted = true;
+
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      .getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false })
       .then((stream) => {
-        // Find or create a video element for the camera feed
-        let video = document.getElementById('mp-camera-video') as HTMLVideoElement | null;
-        if (!video) {
-          video = document.createElement('video');
-          video.id = 'mp-camera-video';
-          video.style.position = 'absolute';
-          video.style.top = '0';
-          video.style.left = '0';
-          video.style.width = '100%';
-          video.style.height = '100%';
-          video.style.objectFit = 'cover';
-          video.style.transform = 'scaleX(-1)'; // mirror front camera
-          video.style.zIndex = '1';
-          video.autoplay = true;
-          video.playsInline = true;
-          video.muted = true;
-          // Attach to the container div (rendered below)
-          const container = document.getElementById('mp-camera-container');
-          if (container) container.appendChild(video);
+        if (!isMounted) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
         }
-        video.srcObject = stream;
-        video.onloadedmetadata = () => {
-          video!.play();
-          setCameraReady(true);
-          console.log('[SignToTextDetector] Camera stream active. Camera ready.');
-        };
+        streamInstance = stream;
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          video.onloadedmetadata = () => {
+            video.play().catch(console.warn);
+            setCameraReady(true);
+            console.log('[SignToTextDetector] Camera stream active.');
+          };
+        }
       })
       .catch((err) => {
-        setInitError(`Camera permission denied or unavailable: ${err.message}`);
+        if (isMounted) {
+          setInitError(`Camera permission denied or unavailable: ${err.message}`);
+        }
       });
 
     return () => {
-      // Stop camera on unmount
-      const video = document.getElementById('mp-camera-video') as HTMLVideoElement | null;
-      if (video && video.srcObject) {
-        (video.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
-        video.srcObject = null;
+      isMounted = false;
+      if (streamInstance) {
+        streamInstance.getTracks().forEach((t) => t.stop());
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
       }
     };
   }, []);
@@ -145,27 +126,17 @@ export default function SignToTextDetector({
 
     const initDetector = async () => {
       try {
-        console.log('[SignToTextDetector] Loading MediaPipe hands.js via script tag...');
         await loadMediaPipeScript();
 
         const HandsClass = (window as any).Hands;
         const HAND_CONNECTIONS = (window as any).HAND_CONNECTIONS as Array<[number, number]>;
 
         if (typeof HandsClass !== 'function') {
-          throw new Error(
-            `window.Hands is not a constructor after loading script. ` +
-            `Got type: ${typeof HandsClass}. ` +
-            `Check that /mediapipe/hands/hands.js is a valid IIFE.`
-          );
+          throw new Error('window.Hands is not a constructor after loading script.');
         }
 
-        console.log('[SignToTextDetector] window.Hands found. Creating MediaPipe Hands instance...');
-
         const handsDetector = new HandsClass({
-          locateFile: (file: string) => {
-            const url = `/mediapipe/hands/${file}`;
-            return url;
-          },
+          locateFile: (file: string) => `/mediapipe/hands/${file}`,
         });
 
         handsDetector.setOptions({
@@ -177,21 +148,6 @@ export default function SignToTextDetector({
 
         handsDetector.onResults((results: Results) => {
           if (!active) return;
-
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-
-          const video = document.getElementById('mp-camera-video') as HTMLVideoElement | null;
-          if (video) {
-            if (canvas.width !== video.clientWidth || canvas.height !== video.clientHeight) {
-              canvas.width = video.clientWidth;
-              canvas.height = video.clientHeight;
-            }
-          }
-
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
 
           let leftHand: NormalizedLandmark[] | null = null;
           let rightHand: NormalizedLandmark[] | null = null;
@@ -210,36 +166,9 @@ export default function SignToTextDetector({
                   rightHand = landmarks;
                 }
               }
-
-              // Draw connections
-              ctx.strokeStyle = handIdx === 0 ? '#00FFCC' : '#FF3366';
-              ctx.lineWidth = 4;
-              for (const connection of HAND_CONNECTIONS) {
-                const start = landmarks[connection[0]];
-                const end = landmarks[connection[1]];
-                if (start && end) {
-                  ctx.beginPath();
-                  ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
-                  ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
-                  ctx.stroke();
-                }
-              }
-
-              // Draw landmarks
-              for (let i = 0; i < landmarks.length; i++) {
-                const lm = landmarks[i];
-                const isTip = [4, 8, 12, 16, 20].includes(i);
-                ctx.fillStyle = isTip ? '#FF3366' : '#FFCC00';
-                ctx.beginPath();
-                ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 6, 0, 2 * Math.PI);
-                ctx.fill();
-                ctx.strokeStyle = '#FFFFFF';
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-              }
             }
 
-            // Fallback: If hands are detected but handedness labels were missing or unclassified
+            // Fallback: If hands detected but missing or unclassified handedness labels
             if (!leftHand && !rightHand) {
               leftHand = results.multiHandLandmarks[0];
               if (results.multiHandLandmarks.length > 1) {
@@ -247,22 +176,7 @@ export default function SignToTextDetector({
               }
             }
 
-            // Draw visual status badge on canvas
-            ctx.fillStyle = 'rgba(10, 10, 22, 0.75)';
-            ctx.fillRect(12, 12, 175, 32);
-            ctx.strokeStyle = '#00FFCC';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(12, 12, 175, 32);
-
-            ctx.font = 'bold 12px sans-serif';
-            ctx.fillStyle = '#00FFCC';
-            ctx.fillText(
-              detectedCount === 1 ? '🟢 1 Hand Detected' : '🟢 2 Hands Detected',
-              24,
-              32
-            );
-
-            // Fire latest callbacks via refs
+            // ALWAYS EXECUTE CALLBACKS FIRST — Guaranteed pipeline delivery
             if (onHandDetectedRef.current) {
               onHandDetectedRef.current(results.multiHandLandmarks[0]);
             }
@@ -270,42 +184,95 @@ export default function SignToTextDetector({
               onHandsDetectedRef.current({ leftHand, rightHand });
             }
           } else {
-            // Draw No Hand Status badge
-            ctx.fillStyle = 'rgba(10, 10, 22, 0.75)';
-            ctx.fillRect(12, 12, 175, 32);
-            ctx.strokeStyle = '#FF3366';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(12, 12, 175, 32);
-
-            ctx.font = 'bold 12px sans-serif';
-            ctx.fillStyle = '#FF3366';
-            ctx.fillText('🔴 No Hand Detected', 24, 32);
-
             if (onHandNotDetectedRef.current) {
               onHandNotDetectedRef.current();
             }
           }
+
+          // Visual Canvas Overlay Drawing
+          const canvas = canvasRef.current;
+          const video = videoRef.current;
+          if (!canvas || !video) return;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return;
+
+          if (canvas.width !== video.clientWidth || canvas.height !== video.clientHeight) {
+            canvas.width = video.clientWidth;
+            canvas.height = video.clientHeight;
+          }
+
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          if (detectedCount > 0) {
+            for (let handIdx = 0; handIdx < results.multiHandLandmarks.length; handIdx++) {
+              const landmarks = results.multiHandLandmarks[handIdx];
+
+              ctx.strokeStyle = handIdx === 0 ? '#00FFCC' : '#FF3366';
+              ctx.lineWidth = 3;
+              if (HAND_CONNECTIONS) {
+                for (const connection of HAND_CONNECTIONS) {
+                  const start = landmarks[connection[0]];
+                  const end = landmarks[connection[1]];
+                  if (start && end) {
+                    ctx.beginPath();
+                    ctx.moveTo(start.x * canvas.width, start.y * canvas.height);
+                    ctx.lineTo(end.x * canvas.width, end.y * canvas.height);
+                    ctx.stroke();
+                  }
+                }
+              }
+
+              for (let i = 0; i < landmarks.length; i++) {
+                const lm = landmarks[i];
+                const isTip = [4, 8, 12, 16, 20].includes(i);
+                ctx.fillStyle = isTip ? '#FF3366' : '#FFCC00';
+                ctx.beginPath();
+                ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 5, 0, 2 * Math.PI);
+                ctx.fill();
+              }
+            }
+
+            ctx.fillStyle = 'rgba(10, 10, 22, 0.8)';
+            ctx.fillRect(12, 12, 180, 30);
+            ctx.strokeStyle = '#00FFCC';
+            ctx.strokeRect(12, 12, 180, 30);
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillStyle = '#00FFCC';
+            ctx.fillText(
+              detectedCount === 1 ? '🟢 1 Hand Detected' : '🟢 2 Hands Detected',
+              22,
+              31
+            );
+          } else {
+            ctx.fillStyle = 'rgba(10, 10, 22, 0.8)';
+            ctx.fillRect(12, 12, 180, 30);
+            ctx.strokeStyle = '#FF3366';
+            ctx.strokeRect(12, 12, 180, 30);
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillStyle = '#FF3366';
+            ctx.fillText('🔴 Waiting for Hands...', 22, 31);
+          }
         });
 
-        console.log('[SignToTextDetector] Calling handsDetector.initialize()...');
         await handsDetector.initialize();
-        console.log('[MediaPipe] Model initialized successfully!');
         setDetectorReady(true);
+        console.log('[SignToTextDetector] MediaPipe initialized successfully.');
 
-        // Frame processing loop
+        // Continuous Frame Loop
         let frameCount = 0;
         const processFrame = async () => {
           if (!active) return;
-          const video = document.getElementById('mp-camera-video') as HTMLVideoElement | null;
-          if (video && video.readyState >= 2) {
+          const video = videoRef.current;
+          if (video && video.readyState >= 2 && !video.paused && !video.ended) {
             try {
               frameCount++;
-              if (frameCount % 60 === 0) {
-                console.log('[MediaPipe] Processing frame active...');
+              if (frameCount % 100 === 0) {
+                console.log(`[SignToTextDetector] Active frame processing loop (${frameCount} frames)`);
               }
               await handsDetector.send({ image: video });
             } catch (err) {
-              console.warn('[SignToTextDetector] Frame send error:', err);
+              console.warn('[SignToTextDetector] Frame error:', err);
             }
           }
           animationFrameId = requestAnimationFrame(processFrame);
@@ -328,10 +295,23 @@ export default function SignToTextDetector({
 
   return (
     <View style={styles.container}>
-      {/* Camera container — video element is injected via JS into this div */}
-      <div
-        id="mp-camera-container"
-        style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}
+      {/* Video Element rendered as proper React DOM Element */}
+      <video
+        ref={videoRef}
+        id="mp-camera-video"
+        playsInline
+        muted
+        autoPlay
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          transform: 'scaleX(-1)', // Mirror front camera feed
+          zIndex: 1,
+        }}
       />
 
       {/* Canvas overlay for landmark drawing */}
@@ -353,7 +333,7 @@ export default function SignToTextDetector({
         <View style={styles.overlayLoader}>
           <ActivityIndicator size="large" color="#00FFCC" />
           <Text style={styles.statusText}>
-            {cameraReady ? 'Loading MediaPipe models...' : 'Starting camera...'}
+            {cameraReady ? 'Loading MediaPipe Hand Tracking...' : 'Accessing Camera...'}
           </Text>
         </View>
       )}
