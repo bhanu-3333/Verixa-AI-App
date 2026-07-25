@@ -131,23 +131,6 @@ export default function HomeScreen() {
         <Text style={styles.featureArrow}>›</Text>
       </TouchableOpacity>
 
-      {/* Sign Language Training Feature (Developer Mode) */}
-      <TouchableOpacity
-        style={[styles.featureCard, { borderColor: 'rgba(255, 193, 7, 0.6)', borderWidth: 1.5 }]}
-        onPress={() => router.push('/sign-training' as any)}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.featureIcon}>🧠</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.featureTitle, { color: '#B45309' }]}>
-            {t('home_sign_training') || 'Sign Language Training'}
-          </Text>
-          <Text style={styles.featureDesc}>
-            {t('home_sign_training_desc') || 'Record training samples for custom sign-language phrase recognition.'}
-          </Text>
-        </View>
-        <Text style={[styles.featureArrow, { color: '#B45309' }]}>›</Text>
-      </TouchableOpacity>
 
       {/* Schemes & Benefits Feature */}
       <TouchableOpacity
