@@ -16,26 +16,37 @@ SEQUENCE_LENGTH = 30
 FEATURE_DIM = 126 
 
 PHRASES = [
-    "CAN I CALL SOMEONE",
-    "MY NAME IS",
-    "I HAVE LOST MY PURSE",
-    "CAN YOU HELP ME",
-    "CAN YOU REPEAT WHAT YOU SAID",
-    "WHERE IS THIS ADDRESS",
-    "CAN YOU CONVEY THIS TO SOMEONE",
-    "CAN I GET YOUR NUMBER",
-    "WHO ARE YOU",
-    "HOW CAN I HELP YOU"
+    "WHEN_SHOULD_I_TAKE_MY_TABLETS",
+    "BANK_ACCOUNT_REQUIRED_DETAILS",
+    "CAN_YOU_HELP_ME",
+    "CAN_YOU_CONVEY_THIS_MESSAGE"
 ]
 
-
-
 PHRASE_DIR_MAP = {
-    phrase: phrase.lower().replace(" ", "_") for phrase in PHRASES
+    phrase: phrase.upper() for phrase in PHRASES
 }
 
-# Normalization map supporting both space-separated and snake_case phrase IDs
-PHRASE_NORM_MAP = {}
+# Normalization map supporting labels, uppercase, display strings, and legacy phrases
+PHRASE_NORM_MAP = {
+    # 4 Primary Sequence Classes
+    "WHEN_SHOULD_I_TAKE_MY_TABLETS": "WHEN_SHOULD_I_TAKE_MY_TABLETS",
+    "WHEN SHOULD I TAKE MY TABLETS?": "WHEN_SHOULD_I_TAKE_MY_TABLETS",
+    "WHEN SHOULD I TAKE MY TABLETS": "WHEN_SHOULD_I_TAKE_MY_TABLETS",
+    
+    "BANK_ACCOUNT_REQUIRED_DETAILS": "BANK_ACCOUNT_REQUIRED_DETAILS",
+    "WHAT DETAILS ARE REQUIRED TO CREATE A BANK ACCOUNT?": "BANK_ACCOUNT_REQUIRED_DETAILS",
+    "WHAT DETAILS ARE REQUIRED TO CREATE A BANK ACCOUNT": "BANK_ACCOUNT_REQUIRED_DETAILS",
+    
+    "CAN_YOU_HELP_ME": "CAN_YOU_HELP_ME",
+    "CAN YOU HELP ME?": "CAN_YOU_HELP_ME",
+    "CAN YOU HELP ME": "CAN_YOU_HELP_ME",
+    
+    "CAN_YOU_CONVEY_THIS_MESSAGE": "CAN_YOU_CONVEY_THIS_MESSAGE",
+    "CAN YOU CONVEY THIS MESSAGE?": "CAN_YOU_CONVEY_THIS_MESSAGE",
+    "CAN YOU CONVEY THIS MESSAGE": "CAN_YOU_CONVEY_THIS_MESSAGE"
+}
+
+# Add default fallback mappings for existing or upper/snake inputs
 for p in PHRASES:
     PHRASE_NORM_MAP[p.upper()] = p
     PHRASE_NORM_MAP[p.lower().replace(" ", "_").upper()] = p
