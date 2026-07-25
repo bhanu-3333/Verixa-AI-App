@@ -34,11 +34,11 @@ const MAX_WORD_HISTORY = 20;
 
 // Dynamic Sequence Recognition Constants
 const SEQUENCE_LENGTH = 30;          // Must collect exactly 30 frames before inference
-const CONFIDENCE_THRESHOLD = 0.80;   // Minimum confidence to consider a prediction
-const COOLDOWN_DURATION_MS = 2000;   // Wait 2 seconds after a confirmed phrase
-const INFERENCE_INTERVAL_MS = 500;   // Sliding-window inference every 500 ms
-const STABILITY_WINDOW = 5;          // Keep last 5 predictions for majority vote
-const STABILITY_REQUIRED = 3;        // Need 3 out of 5 to agree before confirming
+const CONFIDENCE_THRESHOLD = 0.80;   // Minimum confidence (80%) required to consider a prediction
+const COOLDOWN_DURATION_MS = 2000;   // 2-second cooldown after a confirmed completed sign
+const INFERENCE_INTERVAL_MS = 300;   // Fast sliding-window inference (300ms) to evaluate 5 consecutive predictions
+const STABILITY_WINDOW = 5;          // Require 5 sliding windows for prediction confirmation
+const STABILITY_REQUIRED = 5;        // Require 5 consecutive identical predictions
 
 const PHRASES = [
   "WHEN_SHOULD_I_TAKE_MY_TABLETS",
@@ -46,6 +46,30 @@ const PHRASES = [
   "CAN_YOU_HELP_ME",
   "CAN_YOU_CONVEY_THIS_MESSAGE"
 ];
+
+// Helper to compute hand movement delta (velocity) across recent frames
+// Returns true when hand movement drops below stillness threshold (sign completed)
+function calculateHandStillness(frames: FrameHands[]): boolean {
+  if (frames.length < 10) return false;
+  const recentFrames = frames.slice(-10);
+  let totalDelta = 0;
+  let count = 0;
+  for (let i = 1; i < recentFrames.length; i++) {
+    const prev = recentFrames[i - 1];
+    const curr = recentFrames[i];
+    const prevPt = prev.rightHand?.[0] || prev.leftHand?.[0];
+    const currPt = curr.rightHand?.[0] || curr.leftHand?.[0];
+    if (prevPt && currPt) {
+      const dx = currPt.x - prevPt.x;
+      const dy = currPt.y - prevPt.y;
+      totalDelta += Math.sqrt(dx * dx + dy * dy);
+      count++;
+    }
+  }
+  if (count === 0) return false;
+  const avgDelta = totalDelta / count;
+  return avgDelta < 0.012; // Hand movement velocity is low (user has finished sign gesture)
+}
 
 // Helper to convert phrase to localization key
 const getLocKey = (phrase: string): string => {
@@ -65,7 +89,7 @@ export default function SignToTextScreen() {
   // ── Phrase mode state (Sequence LSTM-based) ──
   const [isPredicting, setIsPredicting] = useState(false);
   const [lastPrediction, setLastPrediction] = useState<PredictResponse | null>(null);
-  // stablePhrase is the ONLY phrase shown in the UI — never set until fully stable
+  // stablePhrase is the ONLY phrase shown in the UI — never set until sign is fully completed
   const [stablePhrase, setStablePhrase] = useState<string | null>(null);
   const [predictionMessage, setPredictionMessage] = useState<string>('Show your sign...');
   const [sentence, setSentence] = useState<string[]>([]);
@@ -121,8 +145,7 @@ export default function SignToTextScreen() {
 
     const frames = landmarkQueueRef.current;
 
-    // ── Require a FULL 30-frame window before running any inference ──
-    // This prevents premature predictions while the user is mid-gesture.
+    // ── Require a FULL 30-frame window before running inference ──
     if (frames.length < SEQUENCE_LENGTH) {
       const collected = frames.length;
       setPredictionMessage(`Collecting frames... (${collected}/${SEQUENCE_LENGTH})`);
@@ -132,14 +155,11 @@ export default function SignToTextScreen() {
     try {
       isPredictingRef.current = true;
       setIsPredicting(true);
-      // Do NOT update UI with raw prediction yet — wait for stability
-      setPredictionMessage('Recognizing sign...');
 
       const res = await SignService.predictPhrase(frames);
       setLastPrediction(res);
 
-      // ── Confidence gate ───────────────────────────────────────────────
-      // Reject low-confidence predictions outright
+      // ── Confidence gate (>= 80% confidence required) ──────────────────
       if (!res.accepted || res.confidence < CONFIDENCE_THRESHOLD) {
         recentPredictionsRef.current = [];
         setPredictionMessage('Show your sign...');
@@ -149,24 +169,20 @@ export default function SignToTextScreen() {
       // ── Module-level phrase filter ────────────────────────────────────
       // sign-to-text.tsx is the GENERAL module.
       // Only CAN_YOU_HELP_ME and CAN_YOU_CONVEY_THIS_MESSAGE are valid.
-      // Hospital / Bank phrases are silently ignored.
       const filteredPhrase = filterPhraseForModule(res.phrase, 'general');
 
       if (!filteredPhrase) {
-        // Prediction belongs to a different module — ignore silently
         recentPredictionsRef.current = [];
         setPredictionMessage('Show your sign...');
         return;
       }
 
-      // ── Stability / Smoothing (majority vote) ─────────────────────────
-      // Accumulate last STABILITY_WINDOW predictions.
-      // Only confirm when STABILITY_REQUIRED of them agree.
+      // ── Accumulate predictions for stability evaluation ──────────────
       const recent = recentPredictionsRef.current;
       recent.push(filteredPhrase);
       if (recent.length > STABILITY_WINDOW) recent.shift();
 
-      // Count occurrences of each phrase in the window
+      // Count occurrences of top phrase
       const counts: Record<string, number> = {};
       let topPhrase = filteredPhrase;
       let topCount = 0;
@@ -178,35 +194,41 @@ export default function SignToTextScreen() {
         }
       }
 
-      const isStable = topCount >= STABILITY_REQUIRED;
+      // ── SIGN COMPLETION CONDITIONS ─────────────────────────────────────
+      // 1. Same prediction appears for 5 consecutive predictions
+      // OR
+      // 2. Hand movement becomes very small (stillness) AND top prediction count >= 3
+      const isFiveConsecutive = recent.length >= STABILITY_REQUIRED && recent.every((p) => p === topPhrase);
+      const isHandStill = calculateHandStillness(frames);
+      const isSignFinished = isFiveConsecutive || (isHandStill && topCount >= 3);
 
-      if (!isStable) {
-        // Still accumulating evidence — do NOT show anything yet
+      if (!isSignFinished) {
+        // User is still performing motion or prediction is fluctuating — DO NOT display or speak yet
         setPredictionMessage('Recognizing sign...');
         return;
       }
 
-      // ── CONFIRMED STABLE PREDICTION ──────────────────────────────────
+      // ── CONFIRMED SIGN COMPLETION ──────────────────────────────────────
       const phraseText = t(getLocKey(topPhrase));
 
-      // Update UI with the confirmed stable phrase
+      // Display recognized text ONLY NOW after sign completion
       setStablePhrase(topPhrase);
       setSentence((prev) => [...prev, phraseText]);
       setTranscript((prev) => [phraseText, ...prev].slice(0, 30));
 
-      // Speak the sentence automatically, hands-free
+      // Speak ONCE automatically
       setPredictionMessage('Speaking...');
       SpeechService.speak(phraseText);
 
-      // Trigger 2-second cooldown to suppress duplicate triggers
+      // Trigger 2-second cooldown to suppress continuous repeat
       cooldownRef.current = true;
       setTimeout(() => {
         cooldownRef.current = false;
-        setStablePhrase(null);      // clear display after cooldown
+        setStablePhrase(null); // clear display after cooldown
         setPredictionMessage('Show your sign...');
       }, COOLDOWN_DURATION_MS);
 
-      // Reset sliding window and history for next gesture
+      // Reset sliding window and frame queue for next sign
       recentPredictionsRef.current = [];
       landmarkQueueRef.current = [];
       setFrameCount(0);
