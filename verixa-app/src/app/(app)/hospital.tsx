@@ -803,7 +803,10 @@ export default function HospitalScreen() {
 
             {/* ── Option 2: Sign Language → Text / Voice Panel ── */}
             {commMode === 'sign_to_text' && (
-              <SignToTextVoicePanel staffType="doctor" />
+              <SignToTextVoicePanel
+                staffType="doctor"
+                allowedPhrases={['WHEN_SHOULD_I_TAKE_MY_TABLETS']}
+              />
             )}
 
             {/* ── Option 3: Text / Voice → Sign Language Panel ── */}
