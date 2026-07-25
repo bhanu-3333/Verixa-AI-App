@@ -22,6 +22,7 @@ import { SignService, FrameHands, PredictResponse } from '../../services/SignSer
 import SpeechService from '../../services/SpeechService';
 import { SupportedLanguage } from '../../services/LanguageService';
 import { useLanguage } from '../../components/LanguageProvider';
+import { filterPhraseForModule } from '../../utils/signPhraseFilter';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -32,10 +33,12 @@ const ALPHABET_CONFIDENCE_THRESHOLD = 0.70;
 const MAX_WORD_HISTORY = 20;
 
 // Dynamic Sequence Recognition Constants
-const SEQUENCE_LENGTH = 30;
-const CONFIDENCE_THRESHOLD = 0.80;
-const COOLDOWN_DURATION_MS = 2000;
-const INFERENCE_INTERVAL_MS = 450; // run sliding window inference every 450ms
+const SEQUENCE_LENGTH = 30;          // Must collect exactly 30 frames before inference
+const CONFIDENCE_THRESHOLD = 0.80;   // Minimum confidence to consider a prediction
+const COOLDOWN_DURATION_MS = 2000;   // Wait 2 seconds after a confirmed phrase
+const INFERENCE_INTERVAL_MS = 500;   // Sliding-window inference every 500 ms
+const STABILITY_WINDOW = 5;          // Keep last 5 predictions for majority vote
+const STABILITY_REQUIRED = 3;        // Need 3 out of 5 to agree before confirming
 
 const PHRASES = [
   "WHEN_SHOULD_I_TAKE_MY_TABLETS",
@@ -62,10 +65,14 @@ export default function SignToTextScreen() {
   // ── Phrase mode state (Sequence LSTM-based) ──
   const [isPredicting, setIsPredicting] = useState(false);
   const [lastPrediction, setLastPrediction] = useState<PredictResponse | null>(null);
-  const [predictionMessage, setPredictionMessage] = useState<string>('');
+  // stablePhrase is the ONLY phrase shown in the UI — never set until fully stable
+  const [stablePhrase, setStablePhrase] = useState<string | null>(null);
+  const [predictionMessage, setPredictionMessage] = useState<string>('Show your sign...');
   const [sentence, setSentence] = useState<string[]>([]);
   const [transcript, setTranscript] = useState<string[]>([]);
   const [autoSpeak, setAutoSpeak] = useState(true);
+  // Count of frames collected so far (for progress display)
+  const [frameCount, setFrameCount] = useState(0);
 
   // ── Alphabet mode state ──
   const [currentLetter, setCurrentLetter] = useState<string | null>(null);
@@ -91,7 +98,9 @@ export default function SignToTextScreen() {
     recentPredictionsRef.current = [];
     cooldownRef.current = false;
     setLastPrediction(null);
-    setPredictionMessage('');
+    setStablePhrase(null);
+    setFrameCount(0);
+    setPredictionMessage('Show your sign...');
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     lastCandidateRef.current = null;
     lastConfirmedRef.current = null;
@@ -109,56 +118,99 @@ export default function SignToTextScreen() {
   const runSequenceInference = async (isManual = false) => {
     if (isPredictingRef.current) return;
     if (cooldownRef.current) return;
-    
+
     const frames = landmarkQueueRef.current;
-    if (frames.length < 5) {
-      if (isManual) setPredictionMessage(t('phrase_show_sign'));
+
+    // ── Require a FULL 30-frame window before running any inference ──
+    // This prevents premature predictions while the user is mid-gesture.
+    if (frames.length < SEQUENCE_LENGTH) {
+      const collected = frames.length;
+      setPredictionMessage(`Collecting frames... (${collected}/${SEQUENCE_LENGTH})`);
       return;
     }
 
     try {
       isPredictingRef.current = true;
       setIsPredicting(true);
-      setPredictionMessage('');
+      // Do NOT update UI with raw prediction yet — wait for stability
+      setPredictionMessage('Recognizing sign...');
 
       const res = await SignService.predictPhrase(frames);
       setLastPrediction(res);
 
-      if (res.accepted && res.phrase) {
-        // Validation & Smoothing logic (Same class predicted in 2 consecutive windows)
-        const recent = recentPredictionsRef.current;
-        recent.push(res.phrase);
-        if (recent.length > 3) recent.shift();
-
-        const isStable = recent.length >= 2 && recent.every(p => p === res.phrase);
-
-        if (isStable || isManual) {
-          const phraseText = t(getLocKey(res.phrase));
-          setSentence((prev) => [...prev, phraseText]);
-          setTranscript((prev) => [phraseText, ...prev].slice(0, 30));
-
-          if (autoSpeak) {
-            SpeechService.speak(phraseText);
-          }
-
-          // Trigger cooldown
-          cooldownRef.current = true;
-          setPredictionMessage('Phrase committed!');
-          setTimeout(() => {
-            cooldownRef.current = false;
-            setPredictionMessage('');
-          }, COOLDOWN_DURATION_MS);
-
-          // Clear history and queue
-          recentPredictionsRef.current = [];
-          landmarkQueueRef.current = [];
-        } else {
-          setPredictionMessage('Stabilizing gesture...');
-        }
-      } else {
+      // ── Confidence gate ───────────────────────────────────────────────
+      // Reject low-confidence predictions outright
+      if (!res.accepted || res.confidence < CONFIDENCE_THRESHOLD) {
         recentPredictionsRef.current = [];
-        setPredictionMessage(t('phrase_not_recognized'));
+        setPredictionMessage('Show your sign...');
+        return;
       }
+
+      // ── Module-level phrase filter ────────────────────────────────────
+      // sign-to-text.tsx is the GENERAL module.
+      // Only CAN_YOU_HELP_ME and CAN_YOU_CONVEY_THIS_MESSAGE are valid.
+      // Hospital / Bank phrases are silently ignored.
+      const filteredPhrase = filterPhraseForModule(res.phrase, 'general');
+
+      if (!filteredPhrase) {
+        // Prediction belongs to a different module — ignore silently
+        recentPredictionsRef.current = [];
+        setPredictionMessage('Show your sign...');
+        return;
+      }
+
+      // ── Stability / Smoothing (majority vote) ─────────────────────────
+      // Accumulate last STABILITY_WINDOW predictions.
+      // Only confirm when STABILITY_REQUIRED of them agree.
+      const recent = recentPredictionsRef.current;
+      recent.push(filteredPhrase);
+      if (recent.length > STABILITY_WINDOW) recent.shift();
+
+      // Count occurrences of each phrase in the window
+      const counts: Record<string, number> = {};
+      let topPhrase = filteredPhrase;
+      let topCount = 0;
+      for (const p of recent) {
+        counts[p] = (counts[p] || 0) + 1;
+        if (counts[p] > topCount) {
+          topCount = counts[p];
+          topPhrase = p;
+        }
+      }
+
+      const isStable = topCount >= STABILITY_REQUIRED;
+
+      if (!isStable) {
+        // Still accumulating evidence — do NOT show anything yet
+        setPredictionMessage('Recognizing sign...');
+        return;
+      }
+
+      // ── CONFIRMED STABLE PREDICTION ──────────────────────────────────
+      const phraseText = t(getLocKey(topPhrase));
+
+      // Update UI with the confirmed stable phrase
+      setStablePhrase(topPhrase);
+      setSentence((prev) => [...prev, phraseText]);
+      setTranscript((prev) => [phraseText, ...prev].slice(0, 30));
+
+      // Speak the sentence automatically, hands-free
+      setPredictionMessage('Speaking...');
+      SpeechService.speak(phraseText);
+
+      // Trigger 2-second cooldown to suppress duplicate triggers
+      cooldownRef.current = true;
+      setTimeout(() => {
+        cooldownRef.current = false;
+        setStablePhrase(null);      // clear display after cooldown
+        setPredictionMessage('Show your sign...');
+      }, COOLDOWN_DURATION_MS);
+
+      // Reset sliding window and history for next gesture
+      recentPredictionsRef.current = [];
+      landmarkQueueRef.current = [];
+      setFrameCount(0);
+
     } catch (err: any) {
       console.warn('[SignToText] Prediction API failed:', err);
       setPredictionMessage('Prediction server offline');
@@ -187,9 +239,18 @@ export default function SignToTextScreen() {
         landmarkQueueRef.current.shift();
       }
 
-      // Throttled Sliding Window Prediction
+      // Update frame count display
+      const currentCount = Math.min(landmarkQueueRef.current.length, SEQUENCE_LENGTH);
+      setFrameCount(currentCount);
+
+      // Only run inference when we have a full SEQUENCE_LENGTH window,
+      // throttled by INFERENCE_INTERVAL_MS to avoid hammering the backend.
       const now = Date.now();
-      if (landmarkQueueRef.current.length >= SEQUENCE_LENGTH && (now - lastInferenceTimeRef.current >= INFERENCE_INTERVAL_MS)) {
+      if (
+        landmarkQueueRef.current.length >= SEQUENCE_LENGTH &&
+        !cooldownRef.current &&
+        now - lastInferenceTimeRef.current >= INFERENCE_INTERVAL_MS
+      ) {
         lastInferenceTimeRef.current = now;
         runSequenceInference(false);
       }
@@ -234,9 +295,13 @@ export default function SignToTextScreen() {
     lastConfirmedRef.current = null;
 
     if (mode === 'phrase') {
-      // Gracefully clear/decay the sliding window queue when hands leave camera range
+      // When hands leave, reset frame buffer so user must perform a fresh full gesture
       landmarkQueueRef.current = [];
       recentPredictionsRef.current = [];
+      setFrameCount(0);
+      if (!cooldownRef.current) {
+        setPredictionMessage('Show your sign...');
+      }
     }
   }, [mode]);
 
@@ -321,22 +386,37 @@ export default function SignToTextScreen() {
                     <ActivityIndicator size="small" color="#00FFCC" />
                   ) : (
                     <Text style={styles.gestureOverlayWord}>
-                      {lastPrediction?.phrase ? t(getLocKey(lastPrediction.phrase)) : t('phrase_show_sign')}
+                      {/* Only show confirmed stable phrase — never raw prediction */}
+                      {stablePhrase ? t(getLocKey(stablePhrase)) : predictionMessage || 'Show your sign...'}
                     </Text>
                   )}
-                  {lastPrediction && (
+                  {/* Progress bar: frames collected / SEQUENCE_LENGTH */}
+                  {!stablePhrase && (
+                    <View style={styles.confidenceBar}>
+                      <View
+                        style={[
+                          styles.confidenceFill,
+                          { width: `${Math.round((frameCount / SEQUENCE_LENGTH) * 100)}%` as any },
+                          frameCount >= SEQUENCE_LENGTH ? styles.confHigh : styles.confLow,
+                        ]}
+                      />
+                    </View>
+                  )}
+                  {stablePhrase && lastPrediction && (
                     <View style={styles.confidenceBar}>
                       <View
                         style={[
                           styles.confidenceFill,
                           { width: `${Math.round(lastPrediction.confidence * 100)}%` as any },
-                          lastPrediction.accepted ? styles.confHigh : styles.confLow,
+                          styles.confHigh,
                         ]}
                       />
                     </View>
                   )}
                   <Text style={styles.confidenceLabel}>
-                    {lastPrediction ? `${Math.round(lastPrediction.confidence * 100)}% confidence` : predictionMessage || 'Tracking hands...'}
+                    {stablePhrase && lastPrediction
+                      ? `${Math.round(lastPrediction.confidence * 100)}% confidence`
+                      : `${frameCount}/${SEQUENCE_LENGTH} frames`}
                   </Text>
                 </View>
               )}
@@ -441,14 +521,14 @@ export default function SignToTextScreen() {
             {mode === 'phrase' && (
               <>
                 <View style={styles.wordCard}>
-                  {lastPrediction?.phrase ? (
+                  {stablePhrase ? (
                     <>
-                      <Text style={styles.wordCardLabel}>Last prediction</Text>
-                      <Text style={styles.wordCardWord}>{t(getLocKey(lastPrediction.phrase))}</Text>
+                      <Text style={styles.wordCardLabel}>Recognized phrase</Text>
+                      <Text style={styles.wordCardWord}>{t(getLocKey(stablePhrase))}</Text>
                     </>
                   ) : (
                     <Text style={styles.wordCardPlaceholder}>
-                      Show your hands and perform the gesture sequence for {SEQUENCE_LENGTH} frames
+                      {predictionMessage || `Waiting for sign... (${frameCount}/${SEQUENCE_LENGTH} frames)`}
                     </Text>
                   )}
                 </View>
