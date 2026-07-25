@@ -1,6 +1,4 @@
-// src/services/AlphabetRecognizer.ts
-// Rule‑based recognizer for a subset of ASL alphabet letters.
-// Returns the best‑matching letter and a confidence score (0‑1).
+
 
 type Landmark = { x: number; y: number; z: number };
 
