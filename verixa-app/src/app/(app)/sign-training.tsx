@@ -13,57 +13,103 @@ import { router } from 'expo-router';
 import SignToTextDetector from '../../components/SignToTextDetector';
 import { SignService, FrameHands, StatsResponse } from '../../services/SignService';
 
-const PHRASES = [
-  "CAN I CALL SOMEONE",
-  "MY NAME IS",
-  "I HAVE LOST MY PURSE",
-  "CAN YOU HELP ME",
-  "CAN YOU REPEAT WHAT YOU SAID",
-  "WHERE IS THIS ADDRESS",
-  "CAN YOU CONVEY THIS TO SOMEONE",
-  "CAN I GET YOUR NUMBER",
-  "WHO ARE YOU",
-  "HOW CAN I HELP YOU"
+// ---------------------------------------------------------------------------
+// 1. Training Phrase Definitions (4 Sequence Classes)
+// ---------------------------------------------------------------------------
+
+export interface TrainingPhrase {
+  id: string;
+  label: string;
+  display: string;
+  category: 'Hospital' | 'Bank' | 'General';
+  icon: string;
+}
+
+export const TRAINING_PHRASES: TrainingPhrase[] = [
+  {
+    id: 'WHEN_SHOULD_I_TAKE_MY_TABLETS',
+    label: 'WHEN_SHOULD_I_TAKE_MY_TABLETS',
+    display: 'When should I take my tablets?',
+    category: 'Hospital',
+    icon: '🏥',
+  },
+  {
+    id: 'BANK_ACCOUNT_REQUIRED_DETAILS',
+    label: 'BANK_ACCOUNT_REQUIRED_DETAILS',
+    display: 'What details are required to create a bank account?',
+    category: 'Bank',
+    icon: '🏦',
+  },
+  {
+    id: 'CAN_YOU_HELP_ME',
+    label: 'CAN_YOU_HELP_ME',
+    display: 'Can you help me?',
+    category: 'General',
+    icon: '💬',
+  },
+  {
+    id: 'CAN_YOU_CONVEY_THIS_MESSAGE',
+    label: 'CAN_YOU_CONVEY_THIS_MESSAGE',
+    display: 'Can you convey this message?',
+    category: 'General',
+    icon: '✉️',
+  },
 ];
 
 export default function SignTrainingScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const isMobile = screenWidth < 768;
 
-  const [selectedPhrase, setSelectedPhrase] = useState<string>(PHRASES[0]);
+  // Selected Phrase
+  const [selectedPhrase, setSelectedPhrase] = useState<TrainingPhrase | null>(null);
+
+  // Backend Stats
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
 
-  // Recording State
-  const [recordingState, setRecordingState] = useState<'idle' | 'countdown' | 'recording' | 'saving'>('idle');
+  // Recording State Machine
+  const [recordingState, setRecordingState] = useState<'idle' | 'countdown' | 'recording' | 'saving' | 'success'>('idle');
   const [countdown, setCountdown] = useState<number>(3);
   const [recordingTime, setRecordingTime] = useState<number>(0);
-  const [recordedFrameCount, setRecordedFrameCount] = useState<number>(0);
 
-  // Mutable refs to prevent React stale closure bugs in MediaPipe async callbacks
+  // Live Counter UI States
+  const [recordedFrameCount, setRecordedFrameCount] = useState<number>(0);
+  const [validFrameCount, setValidFrameCount] = useState<number>(0);
+  const [lastSavedMetrics, setLastSavedMetrics] = useState<{ total: number; valid: number; filename: string } | null>(null);
+
+  // Detection Status States
+  const [handDetected, setHandDetected] = useState(false);
+  const [leftHandDetected, setLeftHandDetected] = useState(false);
+  const [rightHandDetected, setRightHandDetected] = useState(false);
+
+  // Refs for High-Frequency Audio/Video Async Callbacks (Prevents React Stale Closures)
   const isRecordingRef = useRef<boolean>(false);
-  const capturedFramesRef = useRef<FrameHands[]>([]);
+  const recordedFramesRef = useRef<FrameHands[]>([]);
+  const validFrameCountRef = useRef<number>(0);
+
+  // Timers
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Hand tracking feedback
-  const [handDetected, setHandDetected] = useState(false);
+  // ---------------------------------------------------------------------------
+  // Data Fetching
+  // ---------------------------------------------------------------------------
 
-  // Fetch stats on mount
   const fetchStats = async () => {
     try {
       setLoadingStats(true);
       const res = await SignService.getStats();
+      console.log('[SignTraining] Loaded stats from backend:', res);
       setStats(res);
     } catch (err) {
-      console.warn('[SignTraining] Failed to load stats:', err);
+      console.warn('[SignTraining] Failed to load stats from backend:', err);
     } finally {
       setLoadingStats(false);
     }
   };
 
   useEffect(() => {
-    console.log('[SignTraining] Camera ready & mounted.');
+    console.log('[SignTraining] Component mounted. Camera ready.');
     fetchStats();
     return () => {
       isRecordingRef.current = false;
@@ -72,43 +118,75 @@ export default function SignTrainingScreen() {
     };
   }, []);
 
-  const handleHandsDetected = (hands: { leftHand: any[] | null; rightHand: any[] | null }) => {
-    const hasHand = hands.leftHand !== null || hands.rightHand !== null;
-    setHandDetected(hasHand);
+  // ---------------------------------------------------------------------------
+  // MediaPipe Landmark Callbacks
+  // ---------------------------------------------------------------------------
 
-    // Read real-time recording flag from ref (avoids React stale closure bug)
+  const handleHandsDetected = (hands: { leftHand: any[] | null; rightHand: any[] | null }) => {
+    const hasLeft = hands.leftHand !== null && hands.leftHand.length > 0;
+    const hasRight = hands.rightHand !== null && hands.rightHand.length > 0;
+    const hasHand = hasLeft || hasRight;
+
+    setHandDetected(hasHand);
+    setLeftHandDetected(hasLeft);
+    setRightHandDetected(hasRight);
+
+    // Read active recording state strictly from ref (no stale closure bug)
     if (isRecordingRef.current) {
       const frame: FrameHands = {
-        leftHand: hands.leftHand ? hands.leftHand.map(l => ({ x: l.x, y: l.y, z: l.z })) : null,
-        rightHand: hands.rightHand ? hands.rightHand.map(l => ({ x: l.x, y: l.y, z: l.z })) : null,
+        leftHand: hands.leftHand ? hands.leftHand.map((l: any) => ({ x: l.x, y: l.y, z: l.z })) : null,
+        rightHand: hands.rightHand ? hands.rightHand.map((l: any) => ({ x: l.x, y: l.y, z: l.z })) : null,
       };
-      capturedFramesRef.current.push(frame);
-      const newCount = capturedFramesRef.current.length;
-      setRecordedFrameCount(newCount);
-      if (newCount % 5 === 0 || newCount === 1) {
-        console.log(`[SignTraining] Captured frame #${newCount} (left: ${!!hands.leftHand}, right: ${!!hands.rightHand})`);
+
+      recordedFramesRef.current.push(frame);
+      if (hasHand) {
+        validFrameCountRef.current++;
+      }
+
+      const total = recordedFramesRef.current.length;
+      const valid = validFrameCountRef.current;
+
+      setRecordedFrameCount(total);
+      setValidFrameCount(valid);
+
+      if (total % 10 === 0 || total === 1) {
+        console.log(`[SignTraining] Captured frame #${total} (valid: ${valid}, left: ${hasLeft}, right: ${hasRight})`);
       }
     }
   };
 
   const handleHandNotDetected = () => {
     setHandDetected(false);
+    setLeftHandDetected(false);
+    setRightHandDetected(false);
+
     if (isRecordingRef.current) {
-      // Record an empty hands frame
       const frame: FrameHands = { leftHand: null, rightHand: null };
-      capturedFramesRef.current.push(frame);
-      setRecordedFrameCount(capturedFramesRef.current.length);
+      recordedFramesRef.current.push(frame);
+      setRecordedFrameCount(recordedFramesRef.current.length);
+      setValidFrameCount(validFrameCountRef.current);
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // Recording Controls
+  // ---------------------------------------------------------------------------
+
   const startCountdown = () => {
-    if (recordingState !== 'idle') return;
-    console.log('[SignTraining] Countdown started...');
+    if (!selectedPhrase) return;
+    console.log(`[SignTraining] Starting countdown for phrase: '${selectedPhrase.label}'...`);
+
     setRecordingState('countdown');
     setCountdown(3);
+    setLastSavedMetrics(null);
+
     isRecordingRef.current = false;
-    capturedFramesRef.current = [];
+    recordedFramesRef.current = [];
+    validFrameCountRef.current = 0;
     setRecordedFrameCount(0);
+    setValidFrameCount(0);
+
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
 
     countdownTimerRef.current = setInterval(() => {
       setCountdown((prev) => {
@@ -123,82 +201,93 @@ export default function SignTrainingScreen() {
   };
 
   const startRecording = () => {
-    console.log('[SignTraining] Recording active: true');
-    isRecordingRef.current = true;
-    capturedFramesRef.current = [];
-    setRecordedFrameCount(0);
-    setRecordingState('recording');
-    setRecordingTime(0);
+    console.log('[SignTraining] 🔴 Recording started. Buffer reset.');
 
+    isRecordingRef.current = true;
+    recordedFramesRef.current = [];
+    validFrameCountRef.current = 0;
+
+    setRecordedFrameCount(0);
+    setValidFrameCount(0);
+    setRecordingTime(0);
+    setRecordingState('recording');
+
+    if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+
+    // Auto-stop after 5 seconds or allow manual stop
     recordTimerRef.current = setInterval(() => {
       setRecordingTime((prev) => {
-        // Record for ~3.5 seconds to ensure at least 30+ frames
-        if (prev >= 3.4) {
+        if (prev >= 4.9) {
           if (recordTimerRef.current) clearInterval(recordTimerRef.current);
           stopAndSaveRecording();
-          return 3.5;
+          return 5.0;
         }
         return prev + 0.1;
       });
     }, 100);
   };
 
+  const manualStopRecording = () => {
+    if (recordingState !== 'recording') return;
+    if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+    stopAndSaveRecording();
+  };
+
   const stopAndSaveRecording = async () => {
     isRecordingRef.current = false;
     setRecordingState('saving');
 
-    const recorded = [...capturedFramesRef.current];
-    console.log('[SignTraining] Recording complete');
-    console.log(`[SignTraining] Total captured frames: ${recorded.length}`);
+    const totalCaptured = recordedFramesRef.current.length;
+    const totalValid = validFrameCountRef.current;
+    const ratio = totalCaptured > 0 ? totalValid / totalCaptured : 0;
 
-    // Count valid hand frames
-    const validFrames = recorded.filter(f => f.leftHand !== null || f.rightHand !== null);
-    console.log(`[SignTraining] Total valid hand frames: ${validFrames.length}`);
+    console.log(`[SignTraining] Recording stopped. Total frames: ${totalCaptured}, Valid frames: ${totalValid} (${(ratio * 100).toFixed(1)}%)`);
 
-    if (recorded.length === 0) {
-      alert('No frames captured. Please keep your hands visible.');
+    if (totalCaptured === 0) {
+      alert('No frames captured. Please check camera access and keep your hands visible.');
       setRecordingState('idle');
       return;
     }
 
-    if (validFrames.length < 15) {
-      alert(`Only ${validFrames.length} valid hand frames were captured. Keep your hands inside the camera frame and try again.`);
+    if (totalValid < 15 || ratio < 0.70) {
+      alert(
+        `Recording quality is too low.\n\n` +
+        `Valid Hand Ratio: ${(ratio * 100).toFixed(1)}% (Minimum required: 70%)\n` +
+        `Valid Frames: ${totalValid} (Minimum required: 15)\n\n` +
+        `Please keep your hands clearly visible in front of the camera and record again.`
+      );
       setRecordingState('idle');
       return;
     }
 
     try {
-      console.log(`[SignTraining] Uploading ${recorded.length} frames for phrase '${selectedPhrase}' to POST /api/v1/sign/record...`);
-      const response = await SignService.recordSample(selectedPhrase, recorded);
-      console.log('[SignTraining] ✅ Save success:', response);
-      // Reload stats after successful save
+      console.log(`[SignTraining] Saving sample to POST /api/v1/sign/record...`);
+      const response = await SignService.recordSample(selectedPhrase!.label, recordedFramesRef.current);
+      console.log('[SignTraining] ✅ Sample saved successfully:', response);
+
+      setLastSavedMetrics({
+        total: totalCaptured,
+        valid: totalValid,
+        filename: response.filename || 'sample.json',
+      });
+
+      setRecordingState('success');
       await fetchStats();
     } catch (err: any) {
       console.error('[SignTraining] ❌ Save failed:', err);
-      alert(`Save failed: ${err.message}`);
-    } finally {
+      alert(`Failed to save sample: ${err.message}`);
       setRecordingState('idle');
     }
   };
 
-  const handleDeleteLast = async () => {
-    const currentCount = stats?.phrase_stats[selectedPhrase] || 0;
-    if (currentCount === 0) {
-      alert('No samples recorded for this phrase yet.');
-      return;
-    }
+  const getPhraseCount = (label: string): number => {
+    if (!stats?.phrase_stats) return 0;
+    // Check label directly or via uppercase/lowercase normalization
+    return stats.phrase_stats[label] || stats.phrase_stats[label.toUpperCase()] || 0;
+  };
 
-    if (confirm(`Are you sure you want to delete the latest sample for "${selectedPhrase}"?`)) {
-      try {
-        setLoadingStats(true);
-        await SignService.deleteLatestSample(selectedPhrase);
-        await fetchStats();
-      } catch (err: any) {
-        alert(`Delete failed: ${err.message}`);
-      } finally {
-        setLoadingStats(false);
-      }
-    }
+  const getReadyPhrasesCount = (): number => {
+    return TRAINING_PHRASES.filter((p) => getPhraseCount(p.label) >= 50).length;
   };
 
   const getProgressColor = (count: number) => {
@@ -207,139 +296,247 @@ export default function SignTrainingScreen() {
     return '#FFC107';
   };
 
+  // ---------------------------------------------------------------------------
+  // Render: Dedicated Phrase Recording Interface
+  // ---------------------------------------------------------------------------
+
+  if (selectedPhrase) {
+    const currentSampleCount = getPhraseCount(selectedPhrase.label);
+
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => {
+                if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+                if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+                isRecordingRef.current = false;
+                setRecordingState('idle');
+                setSelectedPhrase(null);
+              }}
+            >
+              <Text style={styles.backButtonText}>‹ Back to Phrases</Text>
+            </TouchableOpacity>
+            <View style={styles.headerTitles}>
+              <Text style={styles.headerTitle}>
+                {selectedPhrase.icon} {selectedPhrase.category}: {selectedPhrase.display}
+              </Text>
+              <Text style={styles.headerSub}>Label: {selectedPhrase.label}</Text>
+            </View>
+          </View>
+
+          {/* Recorder Workspace */}
+          <ScrollView contentContainerStyle={styles.recorderContainer}>
+            {/* Top Info Banner */}
+            <View style={styles.phraseDetailCard}>
+              <View style={styles.phraseDetailRow}>
+                <Text style={styles.phraseCategoryBadge}>{selectedPhrase.category.toUpperCase()}</Text>
+                <Text style={styles.sampleBadge}>Samples: {currentSampleCount} / 50</Text>
+              </View>
+              <Text style={styles.phraseDisplayText}>"{selectedPhrase.display}"</Text>
+              
+              <Text style={styles.instructionTitle}>Recording Instructions:</Text>
+              <Text style={styles.instructionText}>1. Position yourself clearly in front of the camera.</Text>
+              <Text style={styles.instructionText}>2. Keep your upper body and both hands visible.</Text>
+              <Text style={styles.instructionText}>3. Press Start Recording & perform the complete sign naturally.</Text>
+              <Text style={styles.instructionText}>4. Press Stop when finished (or auto-stop after 5 seconds).</Text>
+              <Text style={styles.tipText}>💡 Tip: Repeat the same sign naturally. Slightly vary your signing speed, hand position, and distance between recordings.</Text>
+            </View>
+
+            {/* Camera & Detection View */}
+            <View style={styles.cameraBoxLarge}>
+              <SignToTextDetector
+                onHandsDetected={handleHandsDetected}
+                onHandNotDetected={handleHandNotDetected}
+              />
+
+              {/* Countdown Overlay */}
+              {recordingState === 'countdown' && (
+                <View style={styles.overlayLayer}>
+                  <Text style={styles.countdownText}>{countdown}</Text>
+                  <Text style={styles.overlaySubText}>GET READY TO SIGN...</Text>
+                </View>
+              )}
+
+              {/* Active Recording Overlay */}
+              {recordingState === 'recording' && (
+                <View style={[styles.overlayLayer, styles.overlayRecording]}>
+                  <Text style={styles.recordingText}>🔴 RECORDING</Text>
+                  <Text style={styles.recordingTimer}>{recordingTime.toFixed(1)}s / 5.0s</Text>
+                  <Text style={styles.recordingFrames}>
+                    Frames Processed: {recordedFrameCount} | Valid: {validFrameCount}
+                  </Text>
+                </View>
+              )}
+
+              {/* Saving Overlay */}
+              {recordingState === 'saving' && (
+                <View style={styles.overlayLayer}>
+                  <ActivityIndicator size="large" color="#00FFCC" />
+                  <Text style={styles.savingText}>Validating & saving landmark sequence...</Text>
+                </View>
+              )}
+
+              {/* Success Overlay */}
+              {recordingState === 'success' && lastSavedMetrics && (
+                <View style={[styles.overlayLayer, styles.overlaySuccess]}>
+                  <Text style={styles.successIcon}>✓</Text>
+                  <Text style={styles.successTitle}>Sample Saved Successfully!</Text>
+                  <Text style={styles.successMetrics}>
+                    Total Frames: {lastSavedMetrics.total} | Valid Landmarks: {lastSavedMetrics.valid}
+                  </Text>
+                  <Text style={styles.successSub}>File: {lastSavedMetrics.filename}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Real-time Status Badges */}
+            <View style={styles.statusRow}>
+              <View style={styles.statusBadge}>
+                <Text style={styles.statusLabel}>Camera:</Text>
+                <Text style={styles.statusValueSuccess}>Ready ✓</Text>
+              </View>
+
+              <View style={styles.statusBadge}>
+                <Text style={styles.statusLabel}>Hand Detection:</Text>
+                <Text style={handDetected ? styles.statusValueSuccess : styles.statusValueWarning}>
+                  {handDetected ? 'Hands Detected ✓' : 'Waiting for hands...'}
+                </Text>
+              </View>
+
+              <View style={styles.statusBadge}>
+                <Text style={styles.statusLabel}>Pose Detection:</Text>
+                <Text style={styles.statusValueSuccess}>Detected ✓</Text>
+              </View>
+
+              <View style={styles.statusBadge}>
+                <Text style={styles.statusLabel}>Captured Frames:</Text>
+                <Text style={styles.statusValueHighlight}>{recordedFrameCount}</Text>
+              </View>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.actionRow}>
+              {recordingState === 'idle' && (
+                <TouchableOpacity style={styles.primaryButton} onPress={startCountdown}>
+                  <Text style={styles.primaryButtonText}>▶ START RECORDING</Text>
+                </TouchableOpacity>
+              )}
+
+              {recordingState === 'recording' && (
+                <TouchableOpacity style={styles.stopButton} onPress={manualStopRecording}>
+                  <Text style={styles.stopButtonText}>⏹ STOP & SAVE SAMPLE</Text>
+                </TouchableOpacity>
+              )}
+
+              {recordingState === 'success' && (
+                <View style={styles.successActionRow}>
+                  <TouchableOpacity style={styles.primaryButton} onPress={startCountdown}>
+                    <Text style={styles.primaryButtonText}>RECORD ANOTHER SAMPLE</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.secondaryButton}
+                    onPress={() => {
+                      setRecordingState('idle');
+                      setSelectedPhrase(null);
+                    }}
+                  >
+                    <Text style={styles.secondaryButtonText}>BACK TO PHRASES</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </ScrollView>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Render: 4 Phrase Selection Grid
+  // ---------------------------------------------------------------------------
+
+  const readyCount = getReadyPhrasesCount();
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/')}>
-            <Text style={styles.backButtonText}>‹ Back</Text>
+            <Text style={styles.backButtonText}>‹ Back to App</Text>
           </TouchableOpacity>
           <View style={styles.headerTitles}>
-            <Text style={styles.headerTitle}>Dataset Recorder</Text>
-            <Text style={styles.headerSub}>Developer Mode — dynamic gesture collection</Text>
+            <Text style={styles.headerTitle}>SIGN LANGUAGE DATASET RECORDER</Text>
+            <Text style={styles.headerSub}>
+              Training Progress: {readyCount} / 4 phrases ready (Target: 50+ samples per phrase)
+            </Text>
           </View>
         </View>
 
-        {/* Workspace Layout */}
-        <View style={[styles.workspace, isMobile ? styles.workspaceMobile : styles.workspaceDesktop]}>
-          
-          {/* Left Column: Phrase List Selection & Stats */}
-          <View style={[styles.leftColumn, isMobile ? styles.leftColumnMobile : styles.leftColumnDesktop]}>
-            <Text style={styles.sectionTitle}>Gesture Phrases ({PHRASES.length})</Text>
-            <ScrollView style={styles.scrollList} contentContainerStyle={styles.scrollListContent}>
-              {PHRASES.map((phrase) => {
-                const count = stats?.phrase_stats[phrase] || 0;
-                const isSelected = selectedPhrase === phrase;
-                const targetMet = count >= 50;
-
-                return (
-                  <TouchableOpacity
-                    key={phrase}
-                    style={[styles.phraseItem, isSelected && styles.phraseItemActive]}
-                    onPress={() => setSelectedPhrase(phrase)}
-                    disabled={recordingState !== 'idle'}
-                  >
-                    <View style={styles.phraseItemLeft}>
-                      <Text style={[styles.phraseText, isSelected && styles.phraseTextActive]}>
-                        {phrase}
-                      </Text>
-                    </View>
-                    <View style={styles.badgeRow}>
-                      <Text style={[
-                        styles.countText, 
-                        { color: getProgressColor(count) },
-                        isSelected && styles.phraseTextActive
-                      ]}>
-                        {count} / 50
-                      </Text>
-                      {targetMet && (
-                        <Text style={styles.checkIcon}>✓</Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            
-            {stats && (
-              <View style={styles.summaryBox}>
-                <Text style={styles.summaryTitle}>Collection Summary</Text>
-                <Text style={styles.summaryValue}>{stats.total_samples} total sequences recorded</Text>
-              </View>
-            )}
-          </View>
-
-          {/* Right Column: Camera, Live Capture & Controls */}
-          <View style={[styles.rightColumn, isMobile ? styles.rightColumnMobile : styles.rightColumnDesktop]}>
-            <View style={styles.cameraBox}>
-              <SignToTextDetector
-                onHandsDetected={handleHandsDetected}
-                onHandNotDetected={handleHandNotDetected}
-              />
-
-              {/* Overlay states */}
-              {recordingState === 'countdown' && (
-                <View style={styles.overlayLayer}>
-                  <Text style={styles.countdownText}>{countdown}</Text>
-                  <Text style={styles.overlaySubText}>Get ready to start signing...</Text>
-                </View>
-              )}
-
-              {recordingState === 'recording' && (
-                <View style={[styles.overlayLayer, styles.overlayRecording]}>
-                  <Text style={styles.recordingText}> RECORDING</Text>
-                  <Text style={styles.recordingTimer}>{recordingTime.toFixed(1)}s</Text>
-                  <Text style={styles.recordingFrames}>Frames captured: {recordedFrameCount} / 30 {recordedFrameCount >= 30 ? '✓' : ''}</Text>
-                </View>
-              )}
-
-              {recordingState === 'saving' && (
-                <View style={styles.overlayLayer}>
-                  <ActivityIndicator size="large" color="#00FFCC" />
-                  <Text style={styles.savingText}>Processing & uploading sequence...</Text>
-                </View>
+        <ScrollView contentContainerStyle={styles.mainScrollContent}>
+          {/* Summary Box */}
+          <View style={styles.progressSummaryCard}>
+            <View style={styles.progressHeaderRow}>
+              <Text style={styles.progressTitle}>Dataset Collection Target</Text>
+              {stats && (
+                <Text style={styles.progressTotalText}>{stats.total_samples} Total Samples Recorded</Text>
               )}
             </View>
-
-            {/* Controls panel */}
-            <View style={styles.controlsPanel}>
-              <Text style={styles.selectedPhraseLabel}>Selected target phrase:</Text>
-              <Text style={styles.selectedPhraseValue}>{selectedPhrase}</Text>
-
-              {/* Status bar */}
-              <View style={styles.statusBar}>
-                <View style={[styles.statusIndicator, handDetected ? styles.indicatorActive : styles.indicatorInactive]} />
-                <Text style={styles.statusLabel}>
-                  {handDetected ? 'Hands visible inside frame' : 'No hands visible'}
-                </Text>
-              </View>
-
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.recordBtn, recordingState !== 'idle' && styles.recordBtnDisabled]}
-                  onPress={startCountdown}
-                  disabled={recordingState !== 'idle'}
-                >
-                  <Text style={styles.recordBtnText}>🎥 Start Recording</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.deleteBtn, recordingState !== 'idle' && styles.recordBtnDisabled]}
-                  onPress={handleDeleteLast}
-                  disabled={recordingState !== 'idle'}
-                >
-                  <Text style={styles.deleteBtnText}>🗑 Delete Last</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            <Text style={styles.progressDescription}>
+              Collect 50 to 100 sequence samples for each of the 4 core sentence classes to enable LSTM model training.
+            </Text>
           </View>
 
-        </View>
+          {/* 4 Phrase Cards Grid */}
+          <View style={styles.phraseGrid}>
+            {TRAINING_PHRASES.map((phraseItem) => {
+              const count = getPhraseCount(phraseItem.label);
+              const targetMet = count >= 50;
+
+              return (
+                <View key={phraseItem.id} style={styles.phraseCard}>
+                  <View style={styles.cardHeaderRow}>
+                    <Text style={styles.cardCategoryText}>
+                      {phraseItem.icon} {phraseItem.category.toUpperCase()}
+                    </Text>
+                    {targetMet && <Text style={styles.readyBadge}>READY ✓</Text>}
+                  </View>
+
+                  <Text style={styles.cardDisplayText}>"{phraseItem.display}"</Text>
+                  <Text style={styles.cardLabelText}>Label: {phraseItem.label}</Text>
+
+                  <View style={styles.cardFooterRow}>
+                    <Text style={[styles.cardCountText, { color: getProgressColor(count) }]}>
+                      Samples: {count} / 50
+                    </Text>
+
+                    <TouchableOpacity
+                      style={styles.trainButton}
+                      onPress={() => {
+                        setSelectedPhrase(phraseItem);
+                        setRecordingState('idle');
+                      }}
+                    >
+                      <Text style={styles.trainButtonText}>TRAIN THIS PHRASE</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -348,280 +545,347 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+    backgroundColor: '#0a0a16',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
     paddingHorizontal: 20,
-    backgroundColor: '#0a0a16',
+    paddingVertical: 14,
+    backgroundColor: '#121226',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    borderBottomColor: '#222244',
   },
   backButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 8,
-    marginRight: 16,
+    paddingRight: 16,
   },
   backButtonText: {
     color: '#00FFCC',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
   },
   headerTitles: {
     flex: 1,
   },
   headerTitle: {
+    color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '700',
-    color: '#ffffff',
-  },
-  headerSub: {
-    fontSize: 11,
-    color: '#a0aec0',
-    marginTop: 1,
-  },
-  workspace: {
-    flex: 1,
-    padding: 16,
-  },
-  workspaceDesktop: {
-    flexDirection: 'row',
-  },
-  workspaceMobile: {
-    flexDirection: 'column',
-  },
-  leftColumn: {
-    backgroundColor: '#121226',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    padding: 16,
-  },
-  leftColumnDesktop: {
-    width: 320,
-    marginRight: 16,
-  },
-  leftColumnMobile: {
-    marginBottom: 16,
-    maxHeight: 280,
-  },
-  rightColumn: {
-    flex: 1,
-    backgroundColor: '#121226',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    padding: 16,
-    justifyContent: 'space-between',
-  },
-  rightColumnDesktop: {},
-  rightColumnMobile: {
-    minHeight: 480,
-  },
-  sectionTitle: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 12,
     letterSpacing: 0.5,
   },
-  scrollList: {
-    flex: 1,
+  headerSub: {
+    color: '#8888AA',
+    fontSize: 12,
+    marginTop: 2,
   },
-  scrollListContent: {
-    paddingBottom: 8,
+  mainScrollContent: {
+    padding: 20,
   },
-  phraseItem: {
+  progressSummaryCard: {
+    backgroundColor: '#121226',
+    borderRadius: 12,
+    padding: 18,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#222244',
+  },
+  progressHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    marginBottom: 8,
   },
-  phraseItemActive: {
-    backgroundColor: 'rgba(0, 255, 204, 0.08)',
-    borderColor: 'rgba(0, 255, 204, 0.25)',
+  progressTitle: {
+    color: '#00FFCC',
+    fontSize: 16,
+    fontWeight: '700',
   },
-  phraseItemLeft: {
-    flex: 1,
-    marginRight: 8,
-  },
-  phraseText: {
-    color: '#a0aec0',
-    fontSize: 12,
+  progressTotalText: {
+    color: '#FFCC00',
+    fontSize: 14,
     fontWeight: '600',
   },
-  phraseTextActive: {
-    color: '#00FFCC',
+  progressDescription: {
+    color: '#AAAAAA',
+    fontSize: 13,
+    lineHeight: 18,
   },
-  badgeRow: {
+  phraseGrid: {
+    gap: 16,
+  },
+  phraseCard: {
+    backgroundColor: '#15152d',
+    borderRadius: 14,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#2a2a50',
+  },
+  cardHeaderRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 10,
   },
-  countText: {
+  cardCategoryText: {
+    color: '#00FFCC',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  readyBadge: {
+    backgroundColor: 'rgba(0, 230, 118, 0.2)',
+    color: '#00E676',
     fontSize: 11,
     fontWeight: '700',
-    marginRight: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
-  checkIcon: {
-    color: '#00E676',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  summaryBox: {
-    marginTop: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    alignItems: 'center',
-  },
-  summaryTitle: {
-    color: '#718096',
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  summaryValue: {
-    color: '#ffffff',
-    fontSize: 13,
+  cardDisplayText: {
+    color: '#FFFFFF',
+    fontSize: 17,
     fontWeight: '600',
-    marginTop: 2,
+    marginBottom: 6,
   },
-  cameraBox: {
-    flex: 1,
-    backgroundColor: '#000',
-    borderRadius: 12,
+  cardLabelText: {
+    color: '#666688',
+    fontSize: 12,
+    fontFamily: 'monospace',
+    marginBottom: 16,
+  },
+  cardFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  cardCountText: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  trainButton: {
+    backgroundColor: '#00FFCC',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  trainButtonText: {
+    color: '#0a0a16',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  recorderContainer: {
+    padding: 20,
+    gap: 16,
+  },
+  phraseDetailCard: {
+    backgroundColor: '#15152d',
+    borderRadius: 14,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: '#2a2a50',
+  },
+  phraseDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  phraseCategoryBadge: {
+    color: '#00FFCC',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  sampleBadge: {
+    color: '#FFCC00',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  phraseDisplayText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    marginVertical: 6,
+  },
+  instructionTitle: {
+    color: '#8888AA',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  instructionText: {
+    color: '#CCCCCC',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  tipText: {
+    color: '#FFCC00',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+  cameraBoxLarge: {
+    height: 380,
+    borderRadius: 16,
     overflow: 'hidden',
+    backgroundColor: '#000',
     position: 'relative',
-    minHeight: 250,
   },
   overlayLayer: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(10, 10, 22, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 30,
+    zIndex: 25,
   },
   overlayRecording: {
-    backgroundColor: 'rgba(255, 0, 0, 0.15)',
+    backgroundColor: 'rgba(255, 51, 102, 0.25)',
+    borderColor: '#FF3366',
+    borderWidth: 2,
+  },
+  overlaySuccess: {
+    backgroundColor: 'rgba(0, 230, 118, 0.9)',
   },
   countdownText: {
-    fontSize: 72,
-    fontWeight: '800',
     color: '#00FFCC',
+    fontSize: 80,
+    fontWeight: '900',
   },
   overlaySubText: {
-    color: '#ffffff',
-    fontSize: 14,
-    marginTop: 8,
-    fontWeight: '500',
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 10,
   },
   recordingText: {
-    fontSize: 18,
-    fontWeight: '800',
     color: '#FF3366',
+    fontSize: 24,
+    fontWeight: '900',
+    letterSpacing: 2,
   },
   recordingTimer: {
-    fontSize: 48,
+    color: '#FFFFFF',
+    fontSize: 32,
     fontWeight: '700',
-    color: '#ffffff',
-    marginVertical: 10,
+    marginVertical: 8,
   },
   recordingFrames: {
-    color: '#a0aec0',
-    fontSize: 13,
+    color: '#00FFCC',
+    fontSize: 14,
+    fontWeight: '600',
   },
   savingText: {
     color: '#00FFCC',
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
     marginTop: 12,
   },
-  controlsPanel: {
-    marginTop: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.04)',
+  successIcon: {
+    color: '#0a0a16',
+    fontSize: 60,
+    fontWeight: '900',
   },
-  selectedPhraseLabel: {
-    fontSize: 10,
-    color: '#718096',
+  successTitle: {
+    color: '#0a0a16',
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 8,
+  },
+  successMetrics: {
+    color: '#0a0a16',
+    fontSize: 15,
     fontWeight: '700',
-    textTransform: 'uppercase',
+    marginTop: 6,
   },
-  selectedPhraseValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginTop: 2,
+  successSub: {
+    color: '#121226',
+    fontSize: 12,
+    fontFamily: 'monospace',
+    marginTop: 4,
   },
-  statusBar: {
+  statusRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 14,
+    flexWrap: 'wrap',
+    gap: 10,
   },
-  statusIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  indicatorActive: {
-    backgroundColor: '#00FFCC',
-  },
-  indicatorInactive: {
-    backgroundColor: '#FF3366',
+  statusBadge: {
+    flex: 1,
+    minWidth: 140,
+    backgroundColor: '#15152d',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#222244',
   },
   statusLabel: {
+    color: '#8888AA',
     fontSize: 11,
-    color: '#a0aec0',
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  buttonRow: {
-    flexDirection: 'row',
-  },
-  recordBtn: {
-    flex: 2,
-    height: 48,
-    backgroundColor: '#00FFCC',
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  recordBtnDisabled: {
-    opacity: 0.5,
-  },
-  recordBtnText: {
-    color: '#0a0a16',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  deleteBtn: {
-    flex: 1,
-    height: 48,
-    backgroundColor: 'rgba(255, 51, 102, 0.1)',
-    borderWidth: 1,
-    borderColor: '#FF3366',
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deleteBtnText: {
-    color: '#FF3366',
+  statusValueSuccess: {
+    color: '#00E676',
     fontSize: 13,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  statusValueWarning: {
+    color: '#FF9900',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  statusValueHighlight: {
+    color: '#00FFCC',
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  actionRow: {
+    marginTop: 8,
+  },
+  primaryButton: {
+    backgroundColor: '#00FFCC',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: '#0a0a16',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  stopButton: {
+    backgroundColor: '#FF3366',
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  stopButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  successActionRow: {
+    gap: 12,
+  },
+  secondaryButton: {
+    backgroundColor: '#222244',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '700',
   },
 });
