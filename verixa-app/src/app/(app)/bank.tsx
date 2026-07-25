@@ -798,7 +798,10 @@ export default function BankScreen() {
 
             {/* ── Option 2: Sign Language → Text / Voice Panel ── */}
             {bankCommMode === 'sign_to_text' && (
-              <SignToTextVoicePanel staffType="staff" />
+              <SignToTextVoicePanel
+                staffType="staff"
+                allowedPhrases={['BANK_ACCOUNT_REQUIRED_DETAILS']}
+              />
             )}
 
             {/* ── Option 3: Text / Voice → Sign Language Panel ── */}
