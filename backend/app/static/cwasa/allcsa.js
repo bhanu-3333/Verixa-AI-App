@@ -5463,6 +5463,7 @@ return typeof lggr.info === "function" ? lggr.info(`List of all avatars for SToC
 }
 static getAvBase(av) {
 var b;
+if (!av || av === "null" || av === "undefined" || String(av).trim() === "") av = "anna";
 b = Data.asDir(this.theConfig.avBase);
 if (this.theConfig.useAvatarJARs) {
 return this.theConfig.avBase;
@@ -8561,6 +8562,7 @@ this.setStatus = this.setStatus.bind(this);
 this.extractAvDefEntry = this.extractAvDefEntry.bind(this);
 // Process avatar definition #using provided AvDefHandler
 this.procAvDef = this.procAvDef.bind(this);
+if (!avName || avName === "null" || avName === "undefined" || String(avName).trim() === "") avName = "anna";
 this.avName = avName;
 this.avDefHandler = avDefHandler;
 //----------
@@ -9143,6 +9145,7 @@ this.characters = {};
 }
 static get(av) {
 var cac, ref;
+if (!av || av === "null" || av === "undefined" || String(av).trim() === "") av = "anna";
 cac = (ref = AvCache._theCache) != null ? ref[av] : void 0;
 if (cac != null) {
 if (typeof lggr.debug === "function") {
@@ -48747,6 +48750,12 @@ SetAvatar(newAv, avXMLs, gui = 0) {
 if (typeof lggr.debug === "function") {
 lggr.debug(`SetAvatar ${newAv}: Called for instance=${this.jagid} state=${this.state} gui=${gui}`);
 }
+if (!avXMLs || !Array.isArray(avXMLs) || avXMLs.length < 2) {
+if (typeof lggr.warn === "function") {
+lggr.warn(`SetAvatar ${newAv}: avXMLs is invalid or undefined`);
+}
+return false;
+}
 if (this.state === AGI.STATE.Alloc) {
 if (typeof allg.debug === "function") {
 allg.debug(`AGI.animSetAvatar(${this.jagid},${newAv}) -> ???`);
@@ -48944,6 +48953,9 @@ lggr.debug(`CB SeqEnd ${this.jagid}: Called`);
 return this._endSign();
 }
 static PrepInstance(av, gui) {
+if (!av || av === "null" || av === "undefined" || String(av).trim() === "") {
+av = "anna";
+}
 return new Promise((resolve, reject) => {
 var makeNewAGI, theAGI, waitAGIDone;
 if (typeof lggr.debug === "function") {
@@ -48983,19 +48995,20 @@ avC = AvCache.get(av);
 if (typeof lggr.debug === "function") {
 lggr.debug(`PrepInstance: Awaits ZIP entries to SetAvatar ${av}/${gui}`);
 }
-return Promise.all([cmC.getZIPEnt("config"), avC.getZIPEnt("config"), avC.getZIPEnt("asd"), avC.getZIPEnt("nonManuals")]).catch((err) => {
-lggr.warn(`Prepinstance: Configuration unavailable for ${av}/${gui}: ${err}`);
-return reject(`SetAvatar failed for ${av}/${gui} with ${err}`);
-}).then((XMLs) => {
+return Promise.all([cmC.getZIPEnt("config"), avC.getZIPEnt("config"), avC.getZIPEnt("asd"), avC.getZIPEnt("nonManuals")]).then((XMLs) => {
 if (typeof lggr.debug === "function") {
 lggr.debug(`PrepInstance: Calls SetAvatar ${av}/${gui}`);
 }
-if (newAGI.SetAvatar(av, XMLs, gui)) {
+if (XMLs && newAGI.SetAvatar(av, XMLs, gui)) {
 return resolve(newAGI);
 } else {
 newAGI.DeAlloc();
 return reject(`PrepInstance: SetAvatar failed for ${av}/${gui}`);
 }
+}).catch((err) => {
+lggr.warn(`Prepinstance: Configuration unavailable for ${av}/${gui}: ${err}`);
+newAGI.DeAlloc();
+return reject(`SetAvatar failed for ${av}/${gui} with ${err}`);
 });
 };
 waitAGIDone = () => {
@@ -49787,6 +49800,7 @@ return void 0; // void result
 }
 loadBinary(gl, avatarName, avdv) {
 var VER_3_DIG, version;
+if (!avatarName || avatarName === "null" || avatarName === "undefined" || String(avatarName).trim() === "") avatarName = "anna";
 this.gl = gl;
 this.avatarName = avatarName;
 if (typeof lggr.trace === "function") {
