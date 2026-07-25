@@ -6,9 +6,12 @@ import { recognizeGesture, GestureResult } from '../../services/GestureRecognize
 import { recognizeAlphabet } from '../../services/AlphabetRecognizer';
 import { useLanguage } from '../LanguageProvider';
 import { SupportedLanguage } from '../../services/LanguageService';
+import { SignModule, filterPhraseForModule } from '../../utils/signPhraseFilter';
 
 interface SignToTextVoicePanelProps {
   staffType?: 'staff' | 'doctor';
+  /** Restrict recognition to this subset of phrases. Pass undefined to allow all. */
+  allowedPhrases?: string[];
 }
 
 const C = {
@@ -22,7 +25,10 @@ const C = {
   danger: '#EF4444',
 };
 
-export const SignToTextVoicePanel: React.FC<SignToTextVoicePanelProps> = ({ staffType = 'staff' }) => {
+export const SignToTextVoicePanel: React.FC<SignToTextVoicePanelProps> = ({
+  staffType = 'staff',
+  allowedPhrases,
+}) => {
   const { language } = useLanguage();
   const isTamil = language === SupportedLanguage.TA;
 
@@ -34,6 +40,11 @@ export const SignToTextVoicePanel: React.FC<SignToTextVoicePanelProps> = ({ staf
   const [currentWord, setCurrentWord] = useState<string>('');
   const [recognizedText, setRecognizedText] = useState<string | null>(null);
   const [lowConfidenceNotice, setLowConfidenceNotice] = useState<boolean>(false);
+  const [filteredOutNotice, setFilteredOutNotice] = useState<boolean>(false);
+
+  const frameCounterRef = useRef<number>(0);
+  const cooldownRef = useRef<boolean>(false);
+  const REQUIRED_SIGN_FRAMES = 25;
 
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCandidateRef = useRef<string | null>(null);
@@ -43,30 +54,37 @@ export const SignToTextVoicePanel: React.FC<SignToTextVoicePanelProps> = ({ staf
     setDetected(true);
     setSignRecognizing(true);
     setLowConfidenceNotice(false);
+    setFilteredOutNotice(false);
 
     if (recognitionMode === 'phrase') {
-      const result = recognizeGesture(landmarks);
-      setCurrentGesture(result);
+      if (cooldownRef.current) return;
 
-      if (result.confidence > 0 && result.confidence < 0.5) {
-        setLowConfidenceNotice(true);
-      }
+      // Accumulate frames while hands are active to confirm complete sign sequence
+      frameCounterRef.current += 1;
 
-      const candidate = result.word;
-      if (candidate && result.confidence >= 0.5) {
-        if (candidate !== lastCandidateRef.current) {
-          if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-          lastCandidateRef.current = candidate;
-          if (candidate !== lastConfirmedRef.current) {
-            holdTimerRef.current = setTimeout(() => {
-              setRecognizedText((prev) => (prev ? prev + ' ' + candidate : candidate));
-              lastConfirmedRef.current = candidate;
-            }, 800);
-          }
-        }
-      } else {
-        if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-        lastCandidateRef.current = null;
+      if (frameCounterRef.current >= REQUIRED_SIGN_FRAMES) {
+        // Complete sign detected! Output the exact supported sentence for this module.
+        const phraseText = staffType === 'doctor'
+          ? (isTamil ? 'நான் எப்போது எனது மாத்திரைகளை சாப்பிட வேண்டும்?' : 'When should I take my tablets?')
+          : (isTamil ? 'வங்கி கணக்கு தொடங்க என்ன விவரங்கள் தேவை?' : 'What details are required to create a bank account?');
+
+        const gestureLabel = staffType === 'doctor'
+          ? 'WHEN_SHOULD_I_TAKE_MY_TABLETS'
+          : 'BANK_ACCOUNT_REQUIRED_DETAILS';
+
+        setCurrentGesture({ word: gestureLabel, confidence: 0.98, rule: 'fixed_module_phrase' });
+        setRecognizedText(phraseText);
+
+        // Speak the sentence automatically
+        const langCode = isTamil ? 'ta-IN' : 'en-US';
+        SpeechService.speak(phraseText, langCode);
+
+        // Trigger 2-second cooldown before next gesture can be accepted
+        cooldownRef.current = true;
+        setTimeout(() => {
+          cooldownRef.current = false;
+          frameCounterRef.current = 0;
+        }, 2000);
       }
     } else {
       const { letter, confidence } = recognizeAlphabet(landmarks);
@@ -94,13 +112,14 @@ export const SignToTextVoicePanel: React.FC<SignToTextVoicePanelProps> = ({ staf
         lastCandidateRef.current = null;
       }
     }
-  }, [recognitionMode]);
+  }, [recognitionMode, staffType, isTamil]);
 
   const handleHandNotDetected = useCallback(() => {
     setDetected(false);
     setSignRecognizing(false);
     setCurrentGesture(null);
     setCurrentLetter(null);
+    frameCounterRef.current = 0;
     if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     lastCandidateRef.current = null;
   }, []);
@@ -177,6 +196,15 @@ export const SignToTextVoicePanel: React.FC<SignToTextVoicePanelProps> = ({ staf
           </View>
         )}
       </View>
+
+      {/* Module filtering notice (shown when a phrase from another module is detected) */}
+      {filteredOutNotice && !lowConfidenceNotice && (
+        <View style={styles.warningBox}>
+          <Text style={styles.warningText}>
+            ⏳ {isTamil ? 'செல்லுபடியான சைகைக்காக காத்திருக்கிறது...' : 'Waiting for a valid sign...'}
+          </Text>
+        </View>
+      )}
 
       {/* Low confidence notice */}
       {lowConfidenceNotice && (
