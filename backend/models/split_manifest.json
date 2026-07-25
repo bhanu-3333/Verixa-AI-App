@@ -1,0 +1,125 @@
+{
+  "dataset_total": 107,
+  "split_counts": {
+    "train": 74,
+    "validation": 16,
+    "test": 17
+  },
+  "leakage_audit": {
+    "train_test_overlap": 0,
+    "train_val_overlap": 0,
+    "val_test_overlap": 0,
+    "leakage_detected": false
+  },
+  "test_metrics": {
+    "test_accuracy": 1.0,
+    "test_loss": 4.5487278839573264e-05,
+    "confusion_matrix": [
+      [
+        3,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        3,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        8,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        3
+      ]
+    ],
+    "classification_report": {
+      "WHEN_SHOULD_I_TAKE_MY_TABLETS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 3.0
+      },
+      "BANK_ACCOUNT_REQUIRED_DETAILS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 3.0
+      },
+      "CAN_YOU_HELP_ME": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 8.0
+      },
+      "CAN_YOU_CONVEY_THIS_MESSAGE": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 3.0
+      },
+      "accuracy": 1.0,
+      "macro avg": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 17.0
+      },
+      "weighted avg": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 17.0
+      }
+    }
+  },
+  "end_to_end_test_results": {
+    "WHEN_SHOULD_I_TAKE_MY_TABLETS": {
+      "test_sample_count": 3,
+      "correct_predictions": 3,
+      "incorrect_predictions": 0,
+      "accuracy_pct": 100.0,
+      "average_confidence": 0.9999,
+      "misclassified_as": [
+        "None"
+      ]
+    },
+    "BANK_ACCOUNT_REQUIRED_DETAILS": {
+      "test_sample_count": 3,
+      "correct_predictions": 3,
+      "incorrect_predictions": 0,
+      "accuracy_pct": 100.0,
+      "average_confidence": 1.0,
+      "misclassified_as": [
+        "None"
+      ]
+    },
+    "CAN_YOU_HELP_ME": {
+      "test_sample_count": 8,
+      "correct_predictions": 8,
+      "incorrect_predictions": 0,
+      "accuracy_pct": 100.0,
+      "average_confidence": 1.0,
+      "misclassified_as": [
+        "None"
+      ]
+    },
+    "CAN_YOU_CONVEY_THIS_MESSAGE": {
+      "test_sample_count": 3,
+      "correct_predictions": 3,
+      "incorrect_predictions": 0,
+      "accuracy_pct": 100.0,
+      "average_confidence": 0.9999,
+      "misclassified_as": [
+        "None"
+      ]
+    }
+  }
+}

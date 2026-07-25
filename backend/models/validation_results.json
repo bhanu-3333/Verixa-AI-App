@@ -1,0 +1,38 @@
+{
+  "WHEN_SHOULD_I_TAKE_MY_TABLETS": {
+    "correct_predictions": 10,
+    "incorrect_predictions": 0,
+    "accuracy_pct": 100.0,
+    "average_confidence": 0.9999,
+    "misclassified_as": [
+      "None"
+    ]
+  },
+  "BANK_ACCOUNT_REQUIRED_DETAILS": {
+    "correct_predictions": 10,
+    "incorrect_predictions": 0,
+    "accuracy_pct": 100.0,
+    "average_confidence": 1.0,
+    "misclassified_as": [
+      "None"
+    ]
+  },
+  "CAN_YOU_HELP_ME": {
+    "correct_predictions": 10,
+    "incorrect_predictions": 0,
+    "accuracy_pct": 100.0,
+    "average_confidence": 1.0,
+    "misclassified_as": [
+      "None"
+    ]
+  },
+  "CAN_YOU_CONVEY_THIS_MESSAGE": {
+    "correct_predictions": 10,
+    "incorrect_predictions": 0,
+    "accuracy_pct": 100.0,
+    "average_confidence": 0.9999,
+    "misclassified_as": [
+      "None"
+    ]
+  }
+}
