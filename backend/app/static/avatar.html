@@ -152,6 +152,13 @@
         } else {
           name = String(avatarName).toLowerCase().trim();
         }
+
+        // Defer avatar selection until CWASA engine is fully ready
+        if (!isReady) {
+          console.log("[avatar.html] Engine not ready yet, queuing setAvatar for '" + name + "'");
+          pendingQueue.push({ action: "setAvatar", avatar: name });
+          return;
+        }
         var selectEl = document.querySelector(".menuAv.av0");
         if (selectEl) {
           var hasOption = Array.from(selectEl.options).some(function(opt) {
@@ -202,9 +209,19 @@
     // ── Command dispatcher ────────────────────────────────────────────────────
     function dispatch(payload) {
       if (!payload || !payload.action) return;
-      if      (payload.action === "play")      { playSiGMLWithDone(payload.sigml); }
-      else if (payload.action === "stop")      { stopSiGML(); }
-      else if (payload.action === "setAvatar") { setAvatar(payload.avatar); }
+      if (payload.action === "play") {
+        console.log("[avatar.html] 📥 Generated SiGML received:", payload.sigml ? payload.sigml.substring(0, 120) + "..." : "");
+        console.log("[avatar.html] ▶️ Avatar playback started");
+        playSiGMLWithDone(payload.sigml);
+      }
+      else if (payload.action === "stop") {
+        console.log("[avatar.html] ⏹️ Avatar playback stopped");
+        stopSiGML();
+      }
+      else if (payload.action === "setAvatar") {
+        console.log("[avatar.html] 👤 Avatar switch requested:", payload.avatar);
+        setAvatar(payload.avatar);
+      }
     }
 
     // ── Incoming bridge messages ───────────────────────────────────────────────
