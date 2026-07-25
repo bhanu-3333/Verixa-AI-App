@@ -74,8 +74,10 @@ class SignService:
         if os.path.exists(MODEL_PATH) and os.path.exists(LABEL_PATH):
             try:
                 import tensorflow as tf
-                # Set CPU execution to avoid GPU overhead for single inference
-                tf.config.set_visible_devices([], 'GPU')
+                try:
+                    tf.config.set_visible_devices([], 'GPU')
+                except Exception:
+                    pass
                 self.model = tf.keras.models.load_model(MODEL_PATH)
                 with open(LABEL_PATH, "r", encoding="utf-8") as f:
                     self.labels = json.load(f)
@@ -253,12 +255,14 @@ class SignService:
                 if not phrase:
                     phrase = PHRASES[best_class_idx]
 
-                accepted = confidence >= 0.80
+                SIGN_CONFIDENCE_THRESHOLD = 0.70
+                accepted = confidence >= SIGN_CONFIDENCE_THRESHOLD
 
                 return {
                     "phrase": phrase if accepted else None,
-                    "confidence": confidence,
+                    "confidence": float(confidence),
                     "accepted": accepted,
+                    "status": "success",
                     "method": "neural_network"
                 }
             except Exception as e:
