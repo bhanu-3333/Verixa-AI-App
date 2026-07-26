@@ -1,19 +1,17 @@
 /**
  * Verixa AI — Splash / Loading Screen
- * Closely matches the provided reference design.
  *
  * Assets required (place in assets/images/splash/):
- *   sky.png    — full-screen blue sky background
- *   woman.png  — transparent PNG of sign-language woman
+ *   sky.jpeg  — full-screen blue sky background
+ *   woman.png — transparent PNG of sign-language woman
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ImageBackground,
-  Image,
   Animated,
   Easing,
   useWindowDimensions,
@@ -23,40 +21,35 @@ import { router } from 'expo-router';
 import { getToken } from '../utils/storage';
 
 // ─── Colors ────────────────────────────────────────────────────────────────
-const CREAM        = '#E5F2C5';   // "sign" logo text
-const DARK_GREEN   = '#123D32';   // tagline + supporting text
-const TRACK_COLOR  = '#174C3D';   // progress bar track
-const FILL_COLOR   = '#DDEEBB';   // progress bar fill
+const CREAM      = '#E5F2C5';
+const DARK_GREEN = '#123D32';
+const TRACK_COLOR = '#174C3D';
+const FILL_COLOR  = '#DDEEBB';
 
 // ─── Durations ─────────────────────────────────────────────────────────────
-const PROGRESS_DURATION = 3200;   // ms — 0 → 100 %
-const HOLD_AFTER_DONE   = 400;    // ms — pause at 100 % before nav
+const PROGRESS_DURATION = 3200;
+const HOLD_AFTER_DONE   = 400;
 
 export default function SplashScreen() {
   const { width, height } = useWindowDimensions();
 
-  // ── Progress state ──────────────────────────────────────────────────────
-  const [progress, setProgress] = useState(0);          // 0–100 integer
+  const [progress, setProgress] = useState(0);
   const progressAnim = useRef(new Animated.Value(0));
   const floatAnim    = useRef(new Animated.Value(0));
   const fadeIn       = useRef(new Animated.Value(0));
   const navigated    = useRef(false);
 
-  // ── Responsive sizing ───────────────────────────────────────────────────
-  const logoSize     = Math.min(width * 0.28, 120);     // "sign" font size
-  const womanWidth   = width * 0.90;                    // nearly full width
-  const womanHeight  = height * 0.72;                   // tall, fills lower screen
-  const barWidth     = width * 0.48;
+  const barWidth = width * 0.48;
 
   useEffect(() => {
-    // 1. Fade in the whole screen
+    // Fade in
     Animated.timing(fadeIn.current, {
       toValue: 1,
       duration: 400,
       useNativeDriver: true,
     }).start();
 
-    // 2. Floating woman loop
+    // Floating loop — subtle ±6px vertical breathe
     Animated.loop(
       Animated.sequence([
         Animated.timing(floatAnim.current, {
@@ -74,30 +67,24 @@ export default function SplashScreen() {
       ])
     ).start();
 
-    // 3. Progress bar animation (drives both the bar width AND the % counter)
+    // Progress animation — useNativeDriver:false needed for width
     Animated.timing(progressAnim.current, {
       toValue: 100,
       duration: PROGRESS_DURATION,
       easing: Easing.out(Easing.quad),
-      useNativeDriver: false,   // needed for width interpolation
+      useNativeDriver: false,
     }).start();
 
-    // 4. JS listener to update the displayed number
     const listenerId = progressAnim.current.addListener(({ value }: { value: number }) => {
       setProgress(Math.floor(value));
     });
 
-    // 5. Navigate when done
     const navTimer = setTimeout(async () => {
       if (navigated.current) return;
       navigated.current = true;
       try {
         const token = await getToken();
-        if (token) {
-          router.replace('/(app)/home');
-        } else {
-          router.replace('/(auth)/login');
-        }
+        router.replace(token ? '/(app)/home' : '/(auth)/login');
       } catch {
         router.replace('/(auth)/login');
       }
@@ -111,7 +98,6 @@ export default function SplashScreen() {
     };
   }, []);
 
-  // Interpolate bar fill width from 0 → barWidth
   const barFillWidth = progressAnim.current.interpolate({
     inputRange:  [0, 100],
     outputRange: [0, barWidth],
@@ -120,65 +106,63 @@ export default function SplashScreen() {
 
   return (
     <Animated.View style={[styles.root, { opacity: fadeIn.current }]}>
-      {/* ── LAYER 1: Full-screen sky background ─────────────────────── */}
+
+      {/* LAYER 1 — Full-screen sky background */}
       <ImageBackground
         source={require('../../assets/images/splash/sky.jpeg')}
         style={StyleSheet.absoluteFill}
         resizeMode="cover"
       />
 
-      {/* ── LAYER 2: Brand text (behind woman so she overlaps it) ─────── */}
-      <View style={[styles.brandBlock, { top: height * 0.08 }]} pointerEvents="none">
-        <Text
-          style={[styles.logoText, { fontSize: Math.min(width * 0.26, 108) }]}
-          adjustsFontSizeToFit={false}
-        >
-          sign
-        </Text>
-        <Text style={styles.tagline}>Bridging silence. Building understanding.</Text>
-      </View>
-
-      {/* ── LAYER 3: Transparent woman (floats on right) ─────────────── */}
+      {/* LAYER 2 — "sign" brand + tagline (sits behind woman) */}
       <View
         pointerEvents="none"
-        style={[
-          styles.womanWrapper,
-          {
-            width:  womanWidth,
-            height: womanHeight,
-            right:  -width * 0.08,   // bleed slightly off right edge
-            top:    height * 0.26,   // face visible from ~26% down
-          },
-        ]}
+        style={[styles.brandBlock, { top: height * 0.07 }]}
       >
-        <Animated.Image
-          source={require('../../assets/images/splash/woman.png')}
-          style={[
-            StyleSheet.absoluteFill,
-            { transform: [{ translateY: floatAnim.current }] },
-          ]}
-          resizeMode="contain"
-        />
+        <Text style={[styles.logoText, { fontSize: Math.min(width * 0.25, 100) }]}>
+          sign
+        </Text>
+        <Text style={styles.tagline}>
+          Bridging silence. Building understanding.
+        </Text>
       </View>
 
-      {/* ── LAYER 4 + 5: Bottom-left foreground content ──────────────── */}
-      <View style={[styles.bottomBlock, { bottom: height * 0.06 }]}>
-        {/* "Every sign matters." */}
+      {/* LAYER 3 — Woman: directly absolute, NO wrapper View, NO absoluteFill */}
+      <Animated.Image
+        source={require('../../assets/images/splash/woman.png')}
+        resizeMode="contain"
+        style={{
+          position: 'absolute',
+          zIndex: 3,
+          // Size: large — occupies most of the right half
+          width:  width * 1.05,
+          height: height * 0.88,
+          // Position: right-anchored, starts at ~17% from top
+          right: -width * 0.18,
+          top:   height * 0.17,
+          // Float animation
+          transform: [{ translateY: floatAnim.current }],
+        }}
+      />
+
+      {/* LAYER 4+5 — "Every sign matters." + progress (bottom-left) */}
+      <View
+        style={[styles.bottomBlock, { bottom: height * 0.055 }]}
+        pointerEvents="none"
+      >
         <Text style={[styles.everySign, { fontSize: Math.min(width * 0.09, 36) }]}>
           {'Every\nsign\nmatters.'}
         </Text>
 
-        {/* Loading percentage */}
         <Text style={styles.percentText}>{progress}%</Text>
 
-        {/* Progress bar */}
         <View style={[styles.trackBar, { width: barWidth }]}>
           <Animated.View style={[styles.fillBar, { width: barFillWidth }]} />
         </View>
 
-        {/* Loading label */}
         <Text style={styles.loadingLabel}>Loading experiences...</Text>
       </View>
+
     </Animated.View>
   );
 }
@@ -186,21 +170,20 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#5BB8F5', // fallback sky colour while image loads
+    overflow: 'visible',              // never clip children
+    backgroundColor: '#5BB8F5',       // sky fallback
   },
 
-  // ── Brand block ──────────────────────────────────────────────────────────
   brandBlock: {
     position: 'absolute',
-    left: 28,
-    right: 28,
+    left: 24,
+    right: 24,
     zIndex: 2,
   },
   logoText: {
     fontWeight: '900',
     color: CREAM,
     letterSpacing: -2,
-    lineHeight: undefined,    // let it be auto
     includeFontPadding: false,
     ...Platform.select({
       ios:     { fontFamily: 'Helvetica Neue' },
@@ -216,23 +199,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // ── Woman wrapper ────────────────────────────────────────────────────────
-  womanWrapper: {
-    position: 'absolute',
-    zIndex: 3,
-  },
-
-  // ── Bottom block ─────────────────────────────────────────────────────────
   bottomBlock: {
     position: 'absolute',
-    left: 28,
+    left: 24,
     zIndex: 5,
   },
   everySign: {
     fontWeight: '900',
     color: DARK_GREEN,
-    lineHeight: undefined,
     letterSpacing: -0.5,
+    lineHeight: undefined,
     ...Platform.select({
       ios:     { fontFamily: 'Helvetica Neue' },
       android: { fontFamily: 'sans-serif-black' },
