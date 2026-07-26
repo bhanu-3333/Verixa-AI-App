@@ -1,6 +1,7 @@
 /**
  * Verixa AI — Schemes & Benefits Screen
- * Centralized accessibility module for PwDs to discover verified government schemes.
+ * UI restyled to match Home screen light blue theme.
+ * ALL business logic, backend calls, state, and hooks are UNCHANGED.
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -15,37 +16,62 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SchemeService, Scheme } from '../../services/SchemeService';
 import { SupportedLanguage } from '../../services/LanguageService';
 import { useLanguage } from '../../components/LanguageProvider';
+import { Feather, MaterialCommunityIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// ─── Design tokens — mirrors home.tsx ────────────────────────────────────────
+const PRIMARY    = '#1A56DB';
+const PAGE_BG    = '#E8F2FF';
+const CARD_BG    = '#FFFFFF';
+const TEXT_DARK  = '#0C1E3C';
+const TEXT_MID   = '#6B7A8D';
+const TEXT_LIGHT = '#A0AEC0';
+const ICON_BG    = '#DCE8F8';
+const DANGER     = '#EF4444';
+const SUCCESS    = '#10B981';
+const CENTRAL_BG = '#EBF2FF';
+const CENTRAL_C  = '#1A56DB';
+const TN_BG      = '#FFF8E1';
+const TN_C       = '#D97706';
+const BASE_W     = 390;
+
+const BOLD_FONT: any = Platform.select({
+  ios:     { fontFamily: 'Helvetica Neue', fontWeight: '700' },
+  android: { fontFamily: 'sans-serif', fontWeight: '700' },
+  default: { fontFamily: 'Arial, sans-serif', fontWeight: '700' },
+});
+
+function scale(size: number, w: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, (w / BASE_W) * size));
+}
 
 export default function SchemesHomeScreen() {
-  const { width: screenWidth } = useWindowDimensions();
-  const isMobile = screenWidth < 768;
+  const { width }  = useWindowDimensions();
+  const insets     = useSafeAreaInsets();
+  const hPad       = scale(16, width, 12, 22);
   const { language, setLanguage: setContextLang, t } = useLanguage();
 
-  // Data state
-  const [schemes, setSchemes] = useState<Scheme[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // ── All original state — UNTOUCHED ───────────────────────────────────────
+  const [schemes,           setSchemes]           = useState<Scheme[]>([]);
+  const [loading,           setLoading]           = useState(true);
+  const [refreshing,        setRefreshing]        = useState(false);
+  const [errorMsg,          setErrorMsg]          = useState<string | null>(null);
+  const [activeTab,         setActiveTab]         = useState<'all' | 'saved'>('all');
+  const [searchQuery,       setSearchQuery]       = useState('');
+  const [selectedCategory,  setSelectedCategory]  = useState<string>('all');
+  const [selectedLevel,     setSelectedLevel]     = useState<string>('all');
+  const [savedIds,          setSavedIds]          = useState<string[]>([]);
 
-  // Filters & Tabs
-  const [activeTab, setActiveTab] = useState<'all' | 'saved'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedLevel, setSelectedLevel] = useState<string>('all');
-
-  // Bookmarks
-  const [savedIds, setSavedIds] = useState<string[]>([]);
-
-  // Load schemes from backend
+  // ── All original logic — UNTOUCHED ───────────────────────────────────────
   const fetchSchemes = useCallback(async () => {
     try {
-      setLoading(true);
-      setErrorMsg(null);
+      setLoading(true); setErrorMsg(null);
       const data = await SchemeService.getSchemes({
         category: selectedCategory !== 'all' ? selectedCategory : undefined,
         government_level: selectedLevel !== 'all' ? selectedLevel : undefined,
@@ -54,62 +80,43 @@ export default function SchemesHomeScreen() {
       });
       setSchemes(data);
     } catch (err: any) {
-      console.warn('[SchemesScreen] Failed to load schemes:', err);
       setErrorMsg(t('schemes_url_error') || err.message || 'Unable to load schemes.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setLoading(false); setRefreshing(false);
     }
   }, [selectedCategory, selectedLevel, searchQuery, language, t]);
 
-  // Load saved bookmark IDs
   const fetchSavedIds = useCallback(async () => {
     const ids = await SchemeService.getSavedSchemeIds();
     setSavedIds(ids);
   }, []);
 
-  useEffect(() => {
-    fetchSchemes();
-    fetchSavedIds();
-  }, [fetchSchemes, fetchSavedIds]);
+  useEffect(() => { fetchSchemes(); fetchSavedIds(); }, [fetchSchemes, fetchSavedIds]);
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchSchemes();
-    fetchSavedIds();
-  };
+  const handleRefresh = () => { setRefreshing(true); fetchSchemes(); fetchSavedIds(); };
 
-  const handleLanguageToggle = async (newLang: SupportedLanguage) => {
-    await setContextLang(newLang);
-  };
+  const handleLanguageToggle = async (newLang: SupportedLanguage) => { await setContextLang(newLang); };
 
   const handleToggleBookmark = async (schemeId: string, e?: any) => {
     if (e && e.stopPropagation) e.stopPropagation();
     try {
       const isSaved = await SchemeService.toggleSaveScheme(schemeId);
-      if (isSaved) {
-        setSavedIds((prev) => [...prev, schemeId]);
-      } else {
-        setSavedIds((prev) => prev.filter((id) => id !== schemeId));
-      }
-    } catch (err: any) {
-      console.warn('[SchemesScreen] Bookmark toggle failed:', err);
-    }
+      if (isSaved) setSavedIds((prev) => [...prev, schemeId]);
+      else          setSavedIds((prev) => prev.filter((id) => id !== schemeId));
+    } catch (err: any) { console.warn('[SchemesScreen] Bookmark toggle failed:', err); }
   };
 
-  // Categories definition
   const categories = useMemo(() => [
-    { key: 'all', label: t('schemes_cat_all') },
-    { key: 'certification', label: t('schemes_cat_certification') },
+    { key: 'all',             label: t('schemes_cat_all') },
+    { key: 'certification',   label: t('schemes_cat_certification') },
     { key: 'assistive_devices', label: t('schemes_cat_assistive_devices') },
-    { key: 'financial', label: t('schemes_cat_financial') },
-    { key: 'education', label: t('schemes_cat_education') },
-    { key: 'employment', label: t('schemes_cat_employment') },
-    { key: 'social_welfare', label: t('schemes_cat_social_welfare') },
-    { key: 'travel', label: t('schemes_cat_travel') },
+    { key: 'financial',       label: t('schemes_cat_financial') },
+    { key: 'education',       label: t('schemes_cat_education') },
+    { key: 'employment',      label: t('schemes_cat_employment') },
+    { key: 'social_welfare',  label: t('schemes_cat_social_welfare') },
+    { key: 'travel',          label: t('schemes_cat_travel') },
   ], [t]);
 
-  // Helper for localized text fields
   const getLoc = (locObj?: { en: string; ta: string }): string => {
     if (!locObj) return '';
     return language === SupportedLanguage.TA ? locObj.ta || locObj.en : locObj.en;
@@ -120,89 +127,103 @@ export default function SchemesHomeScreen() {
     return language === SupportedLanguage.TA ? locList.ta || locList.en : locList.en;
   };
 
-  // Compute filtered schemes for display
   const getDisplayedSchemes = (): Scheme[] => {
     let list = schemes;
-
-    if (activeTab === 'saved') {
-      list = list.filter((s) => savedIds.includes(s.id));
-    }
-
+    if (activeTab === 'saved') list = list.filter((s) => savedIds.includes(s.id));
     return list;
   };
 
   const displayedSchemes = getDisplayedSchemes();
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+    <SafeAreaView style={S.safeArea}>
 
-        {/* ── Header ── */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/(app)/home')}>
-            <Text style={styles.backButtonText}>‹ {t('bank_back')}</Text>
-          </TouchableOpacity>
-
-          <View style={styles.headerTitles}>
-            <Text style={styles.headerTitle}>{t('schemes_title')}</Text>
-            <Text style={styles.headerSub}>{t('schemes_subtitle')}</Text>
-          </View>
+      {/* ── Header ───────────────────────────────────────────────────────── */}
+      <View style={[S.header, { paddingTop: insets.top + 4, paddingHorizontal: hPad }]}>
+        <TouchableOpacity
+          style={S.backBtn}
+          onPress={() => router.replace('/(app)/home')}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Feather name="arrow-left" size={scale(20, width, 18, 24)} color={PRIMARY} />
+        </TouchableOpacity>
+        <View style={S.headerText}>
+          <Text style={[S.headerTitle, { fontSize: scale(18, width, 15, 22) }]}>
+            {t('schemes_title')}
+          </Text>
+          <Text style={[S.headerSub, { fontSize: scale(12, width, 10, 14) }]}>
+            {t('schemes_subtitle')}
+          </Text>
         </View>
+      </View>
 
-        {/* ── Search Input ── */}
-        <View style={styles.searchContainer}>
+      <View style={[S.body, { paddingHorizontal: hPad }]}>
+
+        {/* ── Search ───────────────────────────────────────────────────────── */}
+        <View style={S.searchWrap}>
+          <Feather name="search" size={16} color={TEXT_LIGHT} style={S.searchIcon} />
           <TextInput
-            style={styles.searchInput}
+            style={[S.searchInput, { fontSize: scale(14, width, 12, 16) }]}
             placeholder={t('schemes_search_placeholder')}
-            placeholderTextColor="#718096"
+            placeholderTextColor={TEXT_LIGHT}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchBtn}>
-              <Text style={styles.clearSearchText}>✕</Text>
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={S.clearBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Feather name="x" size={14} color={TEXT_LIGHT} />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* ── Tabs (All / Saved) ── */}
-        <View style={styles.tabsRow}>
+        {/* ── Tabs ─────────────────────────────────────────────────────────── */}
+        <View style={S.tabsRow}>
           <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'all' && styles.tabBtnActive]}
+            style={[S.tabBtn, activeTab === 'all' && S.tabBtnActive]}
             onPress={() => setActiveTab('all')}
+            activeOpacity={0.85}
           >
-            <Text style={[styles.tabBtnText, activeTab === 'all' && styles.tabBtnTextActive]}>
+            <Text style={[S.tabBtnText, { fontSize: scale(13, width, 11, 15) }, activeTab === 'all' && S.tabBtnTextActive]}>
               {t('schemes_tab_all')} ({schemes.length})
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'saved' && styles.tabBtnActive]}
+            style={[S.tabBtn, activeTab === 'saved' && S.tabBtnActive]}
             onPress={() => setActiveTab('saved')}
+            activeOpacity={0.85}
           >
-            <Text style={[styles.tabBtnText, activeTab === 'saved' && styles.tabBtnTextActive]}>
-              ♥ {t('schemes_tab_saved')} ({savedIds.length})
+            <Ionicons
+              name={activeTab === 'saved' ? 'heart' : 'heart-outline'}
+              size={13}
+              color={activeTab === 'saved' ? '#fff' : TEXT_MID}
+              style={{ marginRight: 5 }}
+            />
+            <Text style={[S.tabBtnText, { fontSize: scale(13, width, 11, 15) }, activeTab === 'saved' && S.tabBtnTextActive]}>
+              {t('schemes_tab_saved')} ({savedIds.length})
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* ── Category Filters (Only on All tab) ── */}
+        {/* ── Category Chips ───────────────────────────────────────────────── */}
         {activeTab === 'all' && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={styles.categoryScroll}
-            contentContainerStyle={styles.categoryContent}
+            style={S.catScroll}
+            contentContainerStyle={S.catContent}
           >
             {categories.map((cat) => {
-              const isSelected = selectedCategory === cat.key;
+              const active = selectedCategory === cat.key;
               return (
                 <TouchableOpacity
                   key={cat.key}
-                  style={[styles.catChip, isSelected && styles.catChipActive]}
+                  style={[S.catChip, active && S.catChipActive]}
                   onPress={() => setSelectedCategory(cat.key)}
+                  activeOpacity={0.8}
                 >
-                  <Text style={[styles.catChipText, isSelected && styles.catChipTextActive]}>
+                  <Text style={[S.catChipText, { fontSize: scale(12, width, 11, 14) }, active && S.catChipTextActive]}>
                     {cat.label}
                   </Text>
                 </TouchableOpacity>
@@ -211,390 +232,341 @@ export default function SchemesHomeScreen() {
           </ScrollView>
         )}
 
-        {/* ── Level Filter (Central vs TN) ── */}
+        {/* ── Level Filter ─────────────────────────────────────────────────── */}
         {activeTab === 'all' && (
-          <View style={styles.levelRow}>
-            <TouchableOpacity
-              style={[styles.levelBtn, selectedLevel === 'all' && styles.levelBtnActive]}
-              onPress={() => setSelectedLevel('all')}
-            >
-              <Text style={[styles.levelBtnText, selectedLevel === 'all' && styles.levelBtnTextActive]}>
-                {t('schemes_level_all')}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.levelBtn, selectedLevel === 'central' && styles.levelBtnActive]}
-              onPress={() => setSelectedLevel('central')}
-            >
-              <Text style={[styles.levelBtnText, selectedLevel === 'central' && styles.levelBtnTextActive]}>
-                🏛️ {t('schemes_level_central')}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.levelBtn, selectedLevel === 'state_tn' && styles.levelBtnActive]}
-              onPress={() => setSelectedLevel('state_tn')}
-            >
-              <Text style={[styles.levelBtnText, selectedLevel === 'state_tn' && styles.levelBtnTextActive]}>
-                🌾 {t('schemes_level_state_tn')}
-              </Text>
-            </TouchableOpacity>
+          <View style={S.levelRow}>
+            {[
+              { key: 'all',      label: t('schemes_level_all'),      icon: null,          lib: null },
+              { key: 'central',  label: t('schemes_level_central'),  icon: 'bank',        lib: 'mci' },
+              { key: 'state_tn', label: t('schemes_level_state_tn'), icon: 'leaf',        lib: 'mci' },
+            ].map((lv) => {
+              const active = selectedLevel === lv.key;
+              return (
+                <TouchableOpacity
+                  key={lv.key}
+                  style={[S.levelBtn, active && S.levelBtnActive]}
+                  onPress={() => setSelectedLevel(lv.key)}
+                  activeOpacity={0.8}
+                >
+                  {lv.icon && lv.lib === 'mci' && (
+                    <MaterialCommunityIcons
+                      name={lv.icon as any}
+                      size={13}
+                      color={active ? '#fff' : TEXT_MID}
+                      style={{ marginRight: 4 }}
+                    />
+                  )}
+                  <Text style={[S.levelBtnText, { fontSize: scale(11, width, 10, 13) }, active && S.levelBtnTextActive]}>
+                    {lv.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
-
-
-        {/* ── Content List ── */}
+        {/* ── Content ──────────────────────────────────────────────────────── */}
         {loading && !refreshing ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color="#00FFCC" />
-            <Text style={styles.loadingText}>{t('loading')}</Text>
+          <View style={S.center}>
+            <ActivityIndicator size="large" color={PRIMARY} />
+            <Text style={[S.loadingText, { fontSize: scale(13, width, 11, 15) }]}>{t('loading')}</Text>
           </View>
         ) : errorMsg ? (
-          <View style={styles.centerContainer}>
-            <Text style={styles.errorText}>⚠️ {errorMsg}</Text>
-            <TouchableOpacity style={styles.retryBtn} onPress={fetchSchemes}>
-              <Text style={styles.retryBtnText}>{t('retry')}</Text>
+          <View style={S.center}>
+            <View style={S.errorIconCircle}>
+              <Feather name="alert-circle" size={28} color={DANGER} />
+            </View>
+            <Text style={[S.errorText, { fontSize: scale(14, width, 12, 16) }]}>{errorMsg}</Text>
+            <TouchableOpacity style={S.retryBtn} onPress={fetchSchemes} activeOpacity={0.85}>
+              <Feather name="refresh-cw" size={14} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={[S.retryBtnText, { fontSize: scale(13, width, 11, 15) }]}>{t('retry')}</Text>
             </TouchableOpacity>
           </View>
         ) : displayedSchemes.length === 0 ? (
-          <View style={styles.centerContainer}>
-            <Text style={styles.emptyText}>
+          <View style={S.center}>
+            <View style={S.emptyIconCircle}>
+              <MaterialCommunityIcons name="file-search-outline" size={32} color={TEXT_LIGHT} />
+            </View>
+            <Text style={[S.emptyText, { fontSize: scale(14, width, 12, 16) }]}>
               {activeTab === 'saved' ? t('schemes_no_saved') : t('schemes_no_matches')}
             </Text>
           </View>
         ) : (
           <ScrollView
-            style={styles.schemesScroll}
-            contentContainerStyle={styles.schemesContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#00FFCC" />}
+            style={S.listScroll}
+            contentContainerStyle={S.listContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={PRIMARY} />
+            }
           >
             {displayedSchemes.map((item) => {
-              const isSaved = savedIds.includes(item.id);
+              const isSaved   = savedIds.includes(item.id);
               const isCentral = item.governmentLevel === 'central';
 
               return (
                 <TouchableOpacity
                   key={item.id}
-                  style={styles.schemeCard}
+                  style={S.schemeCard}
                   onPress={() => router.push(`/schemes/${item.id}` as any)}
                   activeOpacity={0.85}
                 >
-                  <View style={styles.cardHeaderRow}>
-                    <View style={[styles.badgeLevel, isCentral ? styles.badgeCentral : styles.badgeTN]}>
-                      <Text style={styles.badgeLevelText}>
+                  {/* Card header: badge + bookmark */}
+                  <View style={S.cardTopRow}>
+                    <View style={[S.levelBadge, isCentral ? S.centralBadge : S.tnBadge]}>
+                      <MaterialCommunityIcons
+                        name={isCentral ? 'bank' : 'leaf'}
+                        size={11}
+                        color={isCentral ? CENTRAL_C : TN_C}
+                        style={{ marginRight: 4 }}
+                      />
+                      <Text style={[S.levelBadgeText, { color: isCentral ? CENTRAL_C : TN_C, fontSize: scale(10, width, 9, 12) }]}>
                         {isCentral ? t('schemes_badge_central') : t('schemes_badge_state_tn')}
                       </Text>
                     </View>
 
                     <TouchableOpacity
-                      style={styles.bookmarkBtn}
+                      style={S.bookmarkBtn}
                       onPress={(e) => handleToggleBookmark(item.id, e)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Text style={[styles.bookmarkIcon, isSaved && styles.bookmarkIconActive]}>
-                        {isSaved ? '♥' : '♡'}
-                      </Text>
+                      <Ionicons
+                        name={isSaved ? 'heart' : 'heart-outline'}
+                        size={scale(20, width, 18, 24)}
+                        color={isSaved ? DANGER : TEXT_LIGHT}
+                      />
                     </TouchableOpacity>
                   </View>
 
-                  <Text style={styles.schemeName}>{getLoc(item.name)}</Text>
-                  <Text style={styles.schemeDesc} numberOfLines={3}>
+                  {/* Scheme name */}
+                  <Text style={[S.schemeName, { fontSize: scale(15, width, 13, 18) }]}>
+                    {getLoc(item.name)}
+                  </Text>
+
+                  {/* Short description */}
+                  <Text style={[S.schemeDesc, { fontSize: scale(13, width, 11, 15) }]} numberOfLines={3}>
                     {getLoc(item.shortDescription)}
                   </Text>
 
-                  <View style={styles.schemeFooter}>
-                    <Text style={styles.departmentText} numberOfLines={1}>
+                  {/* Footer: department + link */}
+                  <View style={S.cardFooter}>
+                    <Text style={[S.departmentText, { fontSize: scale(11, width, 10, 13) }]} numberOfLines={1}>
                       {getLoc(item.department)}
                     </Text>
-                    <Text style={styles.viewDetailsText}>{t('schemes_view_details')}</Text>
+                    <View style={S.viewDetailsRow}>
+                      <Text style={[S.viewDetailsText, { fontSize: scale(12, width, 11, 14) }]}>
+                        {t('schemes_view_details')}
+                      </Text>
+                      <Feather name="arrow-right" size={12} color={PRIMARY} style={{ marginLeft: 3 }} />
+                    </View>
                   </View>
                 </TouchableOpacity>
               );
             })}
           </ScrollView>
         )}
-
       </View>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#0a0a16',
-  },
-  container: {
-    flex: 1,
-    padding: 16,
-  },
+// ─── StyleSheet ───────────────────────────────────────────────────────────────
+const S = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: PAGE_BG },
+  body:     { flex: 1, paddingTop: 14 },
+
+  // Header
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 12,
+    backgroundColor:   CARD_BG,
+    flexDirection:     'row',
+    alignItems:        'center',
+    paddingBottom:     14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0ECF8',
+    shadowColor:       '#000',
+    shadowOffset:      { width: 0, height: 2 },
+    shadowOpacity:     0.06,
+    shadowRadius:      6,
+    elevation:         4,
   },
-  backButton: {
-    backgroundColor: '#1f1f3a',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+  backBtn: {
+    width:           36,
+    height:          36,
+    borderRadius:    18,
+    backgroundColor: ICON_BG,
+    alignItems:      'center',
+    justifyContent:  'center',
+    marginRight:     12,
+    flexShrink:      0,
   },
-  backButtonText: {
-    color: '#00FFCC',
-    fontSize: 14,
-    fontWeight: '600',
+  headerText:  { flex: 1 },
+  headerTitle: { color: TEXT_DARK, ...BOLD_FONT },
+  headerSub:   { color: TEXT_MID, marginTop: 2 },
+
+  // Search
+  searchWrap: {
+    flexDirection:   'row',
+    alignItems:      'center',
+    backgroundColor: CARD_BG,
+    borderRadius:    14,
+    borderWidth:     1.5,
+    borderColor:     '#C5D8F0',
+    paddingHorizontal: 12,
+    marginBottom:    12,
+    shadowColor:     '#000',
+    shadowOffset:    { width: 0, height: 1 },
+    shadowOpacity:   0.04,
+    shadowRadius:    4,
+    elevation:       1,
   },
-  headerTitles: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  headerSub: {
-    fontSize: 11,
-    color: '#a0aec0',
-    marginTop: 2,
-  },
-  langToggle: {
-    flexDirection: 'row',
-    backgroundColor: '#13132b',
-    borderRadius: 8,
-    padding: 3,
-    borderWidth: 1,
-    borderColor: '#1f1f3a',
-  },
-  langBtn: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-  },
-  langBtnActive: {
-    backgroundColor: '#00FFCC',
-  },
-  langBtnText: {
-    fontSize: 11,
-    color: '#a0aec0',
-    fontWeight: '700',
-  },
-  langBtnTextActive: {
-    color: '#0a0a16',
-  },
-  searchContainer: {
-    position: 'relative',
-    marginBottom: 12,
-  },
-  searchInput: {
-    backgroundColor: '#121226',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    color: '#ffffff',
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  clearSearchBtn: {
-    position: 'absolute',
-    right: 14,
-    top: 10,
-  },
-  clearSearchText: {
-    color: '#a0aec0',
-    fontSize: 16,
-  },
+  searchIcon:  { marginRight: 8 },
+  searchInput: { flex: 1, paddingVertical: 11, color: TEXT_DARK },
+  clearBtn:    { padding: 4 },
+
+  // Tabs
   tabsRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-    backgroundColor: '#13132b',
-    borderRadius: 10,
-    padding: 4,
-    gap: 4,
+    flexDirection:   'row',
+    backgroundColor: CARD_BG,
+    borderRadius:    14,
+    padding:         4,
+    gap:             4,
+    marginBottom:    12,
+    shadowColor:     '#000',
+    shadowOffset:    { width: 0, height: 1 },
+    shadowOpacity:   0.04,
+    shadowRadius:    4,
+    elevation:       1,
   },
   tabBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
+    flex:           1,
+    flexDirection:  'row',
+    alignItems:     'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius:   10,
   },
-  tabBtnActive: {
-    backgroundColor: '#00E676',
-  },
-  tabBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#a0aec0',
-  },
-  tabBtnTextActive: {
-    color: '#0a0a16',
-    fontWeight: '700',
-  },
-  categoryScroll: {
-    maxHeight: 40,
-    marginBottom: 10,
-  },
-  categoryContent: {
-    gap: 8,
-    paddingRight: 16,
-  },
+  tabBtnActive:     { backgroundColor: PRIMARY },
+  tabBtnText:       { color: TEXT_MID, fontWeight: '600' },
+  tabBtnTextActive: { color: '#fff', fontWeight: '700' },
+
+  // Category chips
+  catScroll:  { maxHeight: 40, marginBottom: 10 },
+  catContent: { gap: 8, paddingRight: 8 },
   catChip: {
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor:   CARD_BG,
+    paddingVertical:   7,
+    paddingHorizontal: 14,
+    borderRadius:      20,
+    borderWidth:       1.5,
+    borderColor:       '#C5D8F0',
   },
-  catChipActive: {
-    backgroundColor: 'rgba(0, 255, 204, 0.15)',
-    borderColor: '#00FFCC',
-  },
-  catChipText: {
-    fontSize: 12,
-    color: '#a0aec0',
-    fontWeight: '500',
-  },
-  catChipTextActive: {
-    color: '#00FFCC',
-    fontWeight: '700',
-  },
+  catChipActive:     { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  catChipText:       { color: TEXT_MID, fontWeight: '500' },
+  catChipTextActive: { color: '#fff', fontWeight: '700' },
+
+  // Level filter
   levelRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
+    gap:           8,
+    marginBottom:  12,
   },
   levelBtn: {
-    flex: 1,
-    paddingVertical: 6,
-    alignItems: 'center',
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  levelBtnActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: '#00FFCC',
-  },
-  levelBtnText: {
-    fontSize: 11,
-    color: '#a0aec0',
-    fontWeight: '600',
-  },
-  levelBtnTextActive: {
-    color: '#ffffff',
-  },
-
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    color: '#a0aec0',
-    marginTop: 10,
-    fontSize: 13,
-  },
-  errorText: {
-    color: '#FF3366',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 14,
-  },
-  retryBtn: {
-    backgroundColor: '#00FFCC',
+    flex:            1,
+    flexDirection:   'row',
+    alignItems:      'center',
+    justifyContent:  'center',
     paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius:    10,
+    backgroundColor: CARD_BG,
+    borderWidth:     1.5,
+    borderColor:     '#C5D8F0',
   },
-  retryBtnText: {
-    color: '#0a0a16',
-    fontWeight: '700',
+  levelBtnActive:     { backgroundColor: PRIMARY, borderColor: PRIMARY },
+  levelBtnText:       { color: TEXT_MID, fontWeight: '600' },
+  levelBtnTextActive: { color: '#fff', fontWeight: '700' },
+
+  // Center states
+  center: {
+    flex:           1,
+    justifyContent: 'center',
+    alignItems:     'center',
+    padding:        24,
+    gap:            12,
   },
-  emptyText: {
-    color: '#718096',
-    fontSize: 14,
-    textAlign: 'center',
+  errorIconCircle: {
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: '#FEF2F2',
+    alignItems: 'center', justifyContent: 'center',
   },
-  schemesScroll: {
-    flex: 1,
+  loadingText: { color: TEXT_MID, marginTop: 4 },
+  errorText:   { color: DANGER, textAlign: 'center' },
+  retryBtn: {
+    flexDirection:   'row',
+    alignItems:      'center',
+    backgroundColor: PRIMARY,
+    paddingVertical:   10,
+    paddingHorizontal: 20,
+    borderRadius:    12,
+    shadowColor:     PRIMARY,
+    shadowOffset:    { width: 0, height: 3 },
+    shadowOpacity:   0.25,
+    shadowRadius:    6,
+    elevation:       3,
   },
-  schemesContent: {
-    paddingBottom: 24,
-    gap: 12,
+  retryBtnText: { color: '#fff', fontWeight: '700' },
+  emptyIconCircle: {
+    width: 70, height: 70, borderRadius: 35,
+    backgroundColor: ICON_BG,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4,
   },
+  emptyText: { color: TEXT_MID, textAlign: 'center' },
+
+  // Scheme list
+  listScroll:  { flex: 1 },
+  listContent: { paddingBottom: 28, gap: 12 },
+
+  // Scheme card
   schemeCard: {
-    backgroundColor: '#121226',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: CARD_BG,
+    borderRadius:    20,
+    padding:         16,
+    shadowColor:     '#000',
+    shadowOffset:    { width: 0, height: 1 },
+    shadowOpacity:   0.05,
+    shadowRadius:    6,
+    elevation:       2,
   },
-  cardHeaderRow: {
-    flexDirection: 'row',
+  cardTopRow: {
+    flexDirection:  'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    alignItems:     'center',
+    marginBottom:   10,
   },
-  badgeLevel: {
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+  levelBadge: {
+    flexDirection:     'row',
+    alignItems:        'center',
+    paddingVertical:   4,
+    paddingHorizontal: 10,
+    borderRadius:      10,
   },
-  badgeCentral: {
-    backgroundColor: 'rgba(32, 138, 239, 0.15)',
-  },
-  badgeTN: {
-    backgroundColor: 'rgba(255, 193, 7, 0.15)',
-  },
-  badgeLevelText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  bookmarkBtn: {
-    padding: 4,
-  },
-  bookmarkIcon: {
-    fontSize: 20,
-    color: '#a0aec0',
-  },
-  bookmarkIconActive: {
-    color: '#FF3366',
-  },
-  schemeName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 6,
-  },
-  schemeDesc: {
-    fontSize: 13,
-    color: '#a0aec0',
-    lineHeight: 18,
-    marginBottom: 12,
-  },
-  schemeFooter: {
-    flexDirection: 'row',
+  centralBadge:    { backgroundColor: CENTRAL_BG },
+  tnBadge:         { backgroundColor: TN_BG },
+  levelBadgeText:  { fontWeight: '700' },
+  bookmarkBtn:     { padding: 4 },
+
+  schemeName: { color: TEXT_DARK, ...BOLD_FONT, marginBottom: 6 },
+  schemeDesc: { color: TEXT_MID, lineHeight: 19, marginBottom: 12 },
+
+  cardFooter: {
+    flexDirection:  'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems:     'center',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.04)',
-    paddingTop: 10,
+    borderTopColor: '#EFF5FC',
+    paddingTop:     10,
   },
-  departmentText: {
-    fontSize: 11,
-    color: '#718096',
-    flex: 1,
-    marginRight: 8,
-  },
-  viewDetailsText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#00FFCC',
-  },
+  departmentText: { color: TEXT_LIGHT, flex: 1, marginRight: 8 },
+  viewDetailsRow: { flexDirection: 'row', alignItems: 'center' },
+  viewDetailsText: { color: PRIMARY, fontWeight: '700' },
 });
