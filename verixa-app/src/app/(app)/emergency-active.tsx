@@ -1,5 +1,6 @@
 // src/app/(app)/emergency-active.tsx
-// Emergency Active / Assistance screen — manual siren trigger, status overview, location links
+// Emergency Active screen — UI restyled to home light blue theme. No emojis.
+// ALL logic, backend calls, state, and hooks are UNCHANGED.
 
 import React, { useEffect, useState, useRef } from 'react';
 import {
@@ -23,10 +24,33 @@ import emergencyAlarmService, {
   stopEmergencyAlarm,
   cleanupEmergencyAlarm,
 } from '../../services/EmergencyAlarmService';
+import { Feather, MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const PRIMARY    = '#1A56DB';
+const PAGE_BG    = '#E8F2FF';
+const CARD_BG    = '#FFFFFF';
+const TEXT_DARK  = '#0C1E3C';
+const TEXT_MID   = '#6B7A8D';
+const TEXT_LIGHT = '#A0AEC0';
+const ICON_BG    = '#DCE8F8';
+const DANGER     = '#EF4444';
+const SUCCESS    = '#10B981';
+const WARNING    = '#F59E0B';
+
+const BOLD_FONT: any = Platform.select({
+  ios:     { fontFamily: 'Helvetica Neue', fontWeight: '700' },
+  android: { fontFamily: 'sans-serif', fontWeight: '700' },
+  default: { fontFamily: 'Arial, sans-serif', fontWeight: '700' },
+});
 
 export default function EmergencyActiveScreen() {
-  const router = useRouter();
-  const { t } = useLanguage();
+  const router   = useRouter();
+  const { t }    = useLanguage();
+  const insets   = useSafeAreaInsets();
+
+  // ── All original state — UNTOUCHED ───────────────────────────────────────
   const params = useLocalSearchParams<{
     alert_id?: string;
     emergency_type?: string;
@@ -36,239 +60,208 @@ export default function EmergencyActiveScreen() {
   }>();
 
   const [alarmState, setAlarmState] = useState<AlarmState>(emergencyAlarmService.getState());
-
-  // Pulse animation for active alarm icon
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Route parameters
-  const alertId = params.alert_id || '';
+  const alertId      = params.alert_id || '';
   const emergencyType = params.emergency_type || 'General';
-  const latitude = params.latitude ? parseFloat(params.latitude) : null;
-  const longitude = params.longitude ? parseFloat(params.longitude) : null;
-  const mapsLink =
-    params.maps_link ||
-    (latitude && longitude
-      ? `https://www.google.com/maps?q=${latitude},${longitude}&ll=${latitude},${longitude}&z=17`
-      : null);
+  const latitude     = params.latitude  ? parseFloat(params.latitude)  : null;
+  const longitude    = params.longitude ? parseFloat(params.longitude) : null;
+  const mapsLink     = params.maps_link || (latitude && longitude ? `https://www.google.com/maps?q=${latitude},${longitude}&ll=${latitude},${longitude}&z=17` : null);
 
-  // Subscribe to EmergencyAlarmService state changes + preload native audio player
+  // ── All original logic — UNTOUCHED ───────────────────────────────────────
   useEffect(() => {
-    // Preload native audio player so siren starts immediately on ACTIVATE
     prepareEmergencyAlarm();
-
-    const unsubscribe = emergencyAlarmService.subscribe((state) => {
-      setAlarmState(state);
-    });
-
-    return () => {
-      unsubscribe();
-      // Ensure alarm is stopped and resources released when leaving screen
-      cleanupEmergencyAlarm();
-    };
+    const unsubscribe = emergencyAlarmService.subscribe((state) => { setAlarmState(state); });
+    return () => { unsubscribe(); cleanupEmergencyAlarm(); };
   }, []);
 
-  // Pulsing animation effect when alarm is active
   useEffect(() => {
     if (alarmState.alarmActive) {
       const loop = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.2,
-            duration: 600,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1.0,
-            duration: 600,
-            easing: Easing.in(Easing.quad),
-            useNativeDriver: true,
-          }),
+          Animated.timing(pulseAnim, { toValue: 1.2, duration: 600, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.0, duration: 600, easing: Easing.in(Easing.quad),  useNativeDriver: true }),
         ])
       );
       loop.start();
       return () => loop.stop();
-    } else {
-      pulseAnim.setValue(1);
-    }
+    } else { pulseAnim.setValue(1); }
   }, [alarmState.alarmActive, pulseAnim]);
 
   const handleOpenMaps = async () => {
     if (!mapsLink) return;
     try {
       const canOpen = await Linking.canOpenURL(mapsLink);
-      if (canOpen) {
-        await Linking.openURL(mapsLink);
-      } else {
-        if (Platform.OS === 'web') {
-          window.open(mapsLink, '_blank');
-        } else {
-          Alert.alert(t('emergency_error') || 'Error', 'Unable to open Google Maps link.');
-        }
-      }
+      if (canOpen) await Linking.openURL(mapsLink);
+      else Platform.OS === 'web' ? window.open(mapsLink, '_blank') : Alert.alert(t('emergency_error') || 'Error', 'Unable to open Google Maps link.');
     } catch (e) {
-      if (Platform.OS === 'web') {
-        window.open(mapsLink, '_blank');
-      } else {
-        Alert.alert(t('emergency_error') || 'Error', 'Could not open maps URL.');
-      }
+      Platform.OS === 'web' ? window.open(mapsLink, '_blank') : Alert.alert(t('emergency_error') || 'Error', 'Could not open maps URL.');
     }
   };
 
   const handleToggleAlarm = async () => {
-    if (alarmState.alarmActive) {
-      await stopEmergencyAlarm();
-    } else {
-      // Start continuous looping alarm
-      await startEmergencyAlarm(0);
-    }
+    if (alarmState.alarmActive) await stopEmergencyAlarm();
+    else await startEmergencyAlarm(0);
   };
 
-  const handleBack = async () => {
-    await cleanupEmergencyAlarm();
-    router.back();
-  };
-
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'Medical':
-        return '🏥';
-      case 'Police':
-        return '👮';
-      case 'Fire':
-        return '🔥';
-      default:
-        return '⚠️';
-    }
-  };
+  const handleBack = async () => { await cleanupEmergencyAlarm(); router.back(); };
 
   const getLocalizedType = (type: string) => {
     switch (type) {
-      case 'Medical':
-        return t('emergency_type_medical') || 'Medical';
-      case 'Police':
-        return t('emergency_type_police') || 'Police';
-      case 'Fire':
-        return t('emergency_type_fire') || 'Fire';
-      default:
-        return t('emergency_type_general') || 'General';
+      case 'Medical': return t('emergency_type_medical') || 'Medical';
+      case 'Police':  return t('emergency_type_police')  || 'Police';
+      case 'Fire':    return t('emergency_type_fire')    || 'Fire';
+      default:        return t('emergency_type_general') || 'General';
+    }
+  };
+
+  const getTypeIcon = (type: string): React.ReactNode => {
+    const size = 16; const color = TEXT_DARK;
+    switch (type) {
+      case 'Medical': return <MaterialCommunityIcons name="hospital-box-outline" size={size} color={color} />;
+      case 'Police':  return <MaterialCommunityIcons name="shield-account-outline" size={size} color={color} />;
+      case 'Fire':    return <MaterialCommunityIcons name="fire" size={size} color={DANGER} />;
+      default:        return <MaterialCommunityIcons name="alert-circle-outline" size={size} color={WARNING} />;
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
-          <Text style={styles.backText}>← {t('emergency_back') || 'Back'}</Text>
+    <ScrollView
+      style={S.root}
+      contentContainerStyle={[S.container, { paddingTop: insets.top + 12 }]}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <View style={S.header}>
+        <TouchableOpacity style={S.backBtn} onPress={handleBack} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Feather name="arrow-left" size={20} color={PRIMARY} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          🚨 {t('emergency_active_title') || 'Emergency Alert Active'}
-        </Text>
+        <View style={S.headerTextWrap}>
+          <MaterialCommunityIcons name="bell-alert" size={22} color={DANGER} style={{ marginRight: 8 }} />
+          <Text style={S.headerTitle}>{t('emergency_active_title') || 'Emergency Alert Active'}</Text>
+        </View>
       </View>
 
-      {/* Main Subtitle / Notification Card */}
-      <View style={styles.alertCard}>
-        <View style={styles.alertHeaderRow}>
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusBadgeText}>✓ {t('emergency_sos_status') || 'SOS Status'}: SENT</Text>
+      {/* ── Alert Status Card ──────────────────────────────────────────── */}
+      <View style={[S.card, S.alertCard]}>
+        <View style={S.alertHeaderRow}>
+          <View style={S.sentBadge}>
+            <Feather name="check-circle" size={12} color={SUCCESS} style={{ marginRight: 5 }} />
+            <Text style={S.sentBadgeText}>{t('emergency_sos_status') || 'SOS Status'}: SENT</Text>
           </View>
-          {alertId ? <Text style={styles.alertIdText}>ID: {alertId.slice(-6)}</Text> : null}
+          {!!alertId && (
+            <Text style={S.alertIdText}>ID: {alertId.slice(-6)}</Text>
+          )}
         </View>
 
-        <Text style={styles.alertNoticeTitle}>
+        <Text style={S.alertNotice}>
           {t('emergency_contact_alerted') || 'Your emergency contact has been alerted.'}
         </Text>
 
-        {/* Emergency Type Details */}
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>{t('emergency_type_label') || 'Emergency Type'}:</Text>
-          <Text style={styles.detailValue}>
-            {getTypeIcon(emergencyType)} {getLocalizedType(emergencyType)}
+        {/* Emergency Type */}
+        <View style={S.detailRow}>
+          <Text style={S.detailLabel}>{t('emergency_type_label') || 'Emergency Type'}:</Text>
+          <View style={S.detailValueRow}>
+            {getTypeIcon(emergencyType)}
+            <Text style={[S.detailValue, { marginLeft: 6 }]}>{getLocalizedType(emergencyType)}</Text>
+          </View>
+        </View>
+
+        {/* Location */}
+        <View style={S.detailRow}>
+          <Text style={S.detailLabel}>{t('emergency_location_label') || 'Location'}:</Text>
+          <Text style={S.detailValue}>
+            {latitude && longitude ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}` : t('emergency_location_unavailable') || 'GPS Location Attached'}
           </Text>
         </View>
 
-        {/* Location Details */}
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>{t('emergency_location_label') || 'Location'}:</Text>
-          <Text style={styles.detailValue}>
-            {latitude && longitude
-              ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
-              : t('emergency_location_unavailable') || 'GPS Location Attached'}
-          </Text>
-        </View>
-
-        {/* Open in Maps Button */}
+        {/* Maps button */}
         {mapsLink && (
-          <TouchableOpacity style={styles.mapsBtn} onPress={handleOpenMaps} activeOpacity={0.8}>
-            <Text style={styles.mapsBtnText}>
-              🗺️ {t('emergency_open_maps') || 'Open Location in Maps'}
-            </Text>
+          <TouchableOpacity style={S.mapsBtn} onPress={handleOpenMaps} activeOpacity={0.85}>
+            <Feather name="map-pin" size={16} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={S.mapsBtnText}>{t('emergency_open_maps') || 'Open Location in Maps'}</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Main Local Siren Alarm Control Card */}
-      <View style={[styles.alarmCard, alarmState.alarmActive && styles.alarmCardActive]}>
-        <Animated.View
-          style={[
-            styles.iconCircle,
-            alarmState.alarmActive && styles.iconCircleActive,
-            { transform: [{ scale: pulseAnim }] },
-          ]}
-        >
-          <Text style={styles.alarmIcon}>{alarmState.alarmActive ? '🔊' : '📢'}</Text>
+      {/* ── Alarm Control Card ─────────────────────────────────────────── */}
+      <View style={[S.card, alarmState.alarmActive && S.alarmCardActive]}>
+        <Animated.View style={[
+          S.alarmIconCircle,
+          alarmState.alarmActive && S.alarmIconCircleActive,
+          { transform: [{ scale: pulseAnim }] },
+        ]}>
+          <MaterialCommunityIcons
+            name={alarmState.alarmActive ? 'volume-high' : 'bullhorn-outline'}
+            size={38}
+            color={alarmState.alarmActive ? '#fff' : PRIMARY}
+          />
         </Animated.View>
 
-        <Text style={styles.alarmSectionTitle}>
+        <Text style={[S.alarmTitle, alarmState.alarmActive && { color: DANGER }]}>
           {alarmState.alarmActive
-            ? `🔊 ${t('emergency_alarm_active') || 'Emergency Alarm Active'}`
-            : t('emergency_alarm_section_title') || 'Nearby Emergency Alarm'}
+            ? (t('emergency_alarm_active') || 'Emergency Alarm Active')
+            : (t('emergency_alarm_section_title') || 'Nearby Emergency Alarm')}
         </Text>
 
-        <Text style={styles.alarmDescription}>
-          {t('emergency_alarm_description') ||
-            'Use this alarm if you need immediate attention from people nearby.'}
+        <Text style={S.alarmDesc}>
+          {t('emergency_alarm_description') || 'Use this alarm if you need immediate attention from people nearby.'}
         </Text>
 
-        {/* Alarm Toggle Button (Activate Alarm <-> Stop Alarm) */}
         <TouchableOpacity
-          style={[styles.mainAlarmBtn, alarmState.alarmActive && styles.stopAlarmBtn]}
+          style={[S.alarmBtn, alarmState.alarmActive && S.alarmBtnStop]}
           onPress={handleToggleAlarm}
           activeOpacity={0.85}
           disabled={alarmState.alarmLoading}
         >
-          <Text style={styles.mainAlarmBtnText}>
+          <MaterialCommunityIcons
+            name={alarmState.alarmLoading ? 'loading' : alarmState.alarmActive ? 'stop-circle' : 'volume-high'}
+            size={20}
+            color="#fff"
+            style={{ marginRight: 10 }}
+          />
+          <Text style={S.alarmBtnText}>
             {alarmState.alarmLoading
-              ? t('loading') || 'Loading...'
+              ? (t('loading') || 'Loading...')
               : alarmState.alarmActive
-              ? `⏹ STOP EMERGENCY ALARM`
-              : `🔊 ACTIVATE EMERGENCY ALARM`}
+              ? 'STOP EMERGENCY ALARM'
+              : 'ACTIVATE EMERGENCY ALARM'}
           </Text>
         </TouchableOpacity>
 
-        {/* Live Active Status Indicators (Siren Active / Vibration Active) */}
+        {/* Live status badges */}
         {alarmState.alarmActive && (
-          <View style={styles.statusRowContainer}>
-            <View style={[styles.miniStatusBadge, alarmState.sirenAudioPlaying ? styles.greenMiniBadge : styles.orangeMiniBadge]}>
-              <Text style={styles.miniStatusText}>
-                {alarmState.sirenAudioPlaying ? '🔊 Siren Active' : '⚠️ Siren Audio Failed'}
+          <View style={S.statusBadgesRow}>
+            <View style={[S.miniBadge, alarmState.sirenAudioPlaying ? S.miniBadgeSuccess : S.miniBadgeWarn]}>
+              <MaterialCommunityIcons
+                name={alarmState.sirenAudioPlaying ? 'volume-high' : 'volume-off'}
+                size={12}
+                color={alarmState.sirenAudioPlaying ? SUCCESS : WARNING}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={[S.miniBadgeText, { color: alarmState.sirenAudioPlaying ? SUCCESS : WARNING }]}>
+                {alarmState.sirenAudioPlaying ? 'Siren Active' : 'Siren Audio Failed'}
               </Text>
             </View>
-            <View style={[styles.miniStatusBadge, alarmState.vibrationActive ? styles.greenMiniBadge : styles.grayMiniBadge]}>
-              <Text style={styles.miniStatusText}>
-                {alarmState.vibrationActive ? '📳 Vibration Active' : '📳 Vibration Stopped'}
+            <View style={[S.miniBadge, alarmState.vibrationActive ? S.miniBadgeSuccess : S.miniBadgeNeutral]}>
+              <MaterialCommunityIcons
+                name="vibrate"
+                size={12}
+                color={alarmState.vibrationActive ? SUCCESS : TEXT_LIGHT}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={[S.miniBadgeText, { color: alarmState.vibrationActive ? SUCCESS : TEXT_LIGHT }]}>
+                {alarmState.vibrationActive ? 'Vibration Active' : 'Vibration Stopped'}
               </Text>
             </View>
           </View>
         )}
 
-        {/* Playback Error Warning */}
+        {/* Error */}
         {alarmState.alarmError && alarmState.errorMessage && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>
-              ⚠️ {alarmState.errorMessage}
-            </Text>
+          <View style={S.errorBox}>
+            <Feather name="alert-triangle" size={14} color={DANGER} style={{ marginRight: 6 }} />
+            <Text style={S.errorBoxText}>{alarmState.errorMessage}</Text>
           </View>
         )}
       </View>
@@ -276,221 +269,121 @@ export default function EmergencyActiveScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    backgroundColor: '#0d1117',
-    padding: 20,
-    paddingBottom: 60,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    gap: 12,
-  },
+const S = StyleSheet.create({
+  root:      { flex: 1, backgroundColor: PAGE_BG },
+  container: { padding: 16, paddingBottom: 60 },
+
+  // Header
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
   backBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    backgroundColor: '#1c2333',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#30363d',
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: ICON_BG, alignItems: 'center', justifyContent: 'center',
   },
-  backText: {
-    color: '#8b949e',
-    fontSize: 14,
-    fontWeight: '600',
+  headerTextWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  headerTitle:    { fontSize: 20, color: TEXT_DARK, ...BOLD_FONT, flex: 1 },
+
+  // Card base
+  card: {
+    backgroundColor: CARD_BG,
+    borderRadius:    20,
+    padding:         18,
+    marginBottom:    16,
+    shadowColor:     '#000',
+    shadowOffset:    { width: 0, height: 1 },
+    shadowOpacity:   0.05,
+    shadowRadius:    6,
+    elevation:       2,
   },
-  headerTitle: {
-    flex: 1,
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#f0f6fc',
+
+  // Alert card
+  alertCard:      { borderWidth: 1.5, borderColor: SUCCESS + '40' },
+  alertHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sentBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: SUCCESS + '18',
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: 20, borderWidth: 1, borderColor: SUCCESS + '40',
   },
-  alertCard: {
-    backgroundColor: '#161b22',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#238636',
-  },
-  alertHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  statusBadge: {
-    backgroundColor: '#0d2818',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#3fb950',
-  },
-  statusBadgeText: {
-    color: '#3fb950',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  alertIdText: {
-    color: '#8b949e',
-    fontSize: 12,
+  sentBadgeText: { color: SUCCESS, fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
+  alertIdText:   {
+    color: TEXT_LIGHT, fontSize: 12,
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
-  alertNoticeTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#f0f6fc',
-    marginBottom: 16,
-    lineHeight: 24,
-  },
+  alertNotice: { fontSize: 17, color: TEXT_DARK, ...BOLD_FONT, marginBottom: 14, lineHeight: 23 },
   detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderColor: '#21262d',
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', paddingVertical: 10,
+    borderTopWidth: 1, borderColor: '#EFF5FC',
   },
-  detailLabel: {
-    color: '#8b949e',
-    fontSize: 14,
-  },
-  detailValue: {
-    color: '#f0f6fc',
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  detailLabel:    { color: TEXT_MID, fontSize: 14 },
+  detailValueRow: { flexDirection: 'row', alignItems: 'center' },
+  detailValue:    { color: TEXT_DARK, fontSize: 15, fontWeight: '600' },
   mapsBtn: {
-    marginTop: 16,
-    backgroundColor: '#1f6feb',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginTop: 14, backgroundColor: PRIMARY,
+    paddingVertical: 13, paddingHorizontal: 20,
+    borderRadius: 14,
+    shadowColor: PRIMARY, shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25, shadowRadius: 6, elevation: 3,
   },
-  mapsBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
+  mapsBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+
+  // Alarm card
+  alarmCardActive: { borderWidth: 1.5, borderColor: DANGER + '50' },
+  alarmIconCircle: {
+    width: 84, height: 84, borderRadius: 42,
+    backgroundColor: ICON_BG, alignItems: 'center', justifyContent: 'center',
+    marginBottom: 16, alignSelf: 'center',
+    shadowColor: PRIMARY, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12, shadowRadius: 6, elevation: 2,
   },
-  alarmCard: {
-    backgroundColor: '#161b22',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#30363d',
+  alarmIconCircleActive: {
+    backgroundColor: DANGER,
+    shadowColor: DANGER, shadowOpacity: 0.35,
   },
-  alarmCardActive: {
-    borderColor: '#ff4d4d',
-    backgroundColor: '#260a0a',
+  alarmTitle: {
+    fontSize: 20, color: TEXT_DARK, ...BOLD_FONT,
+    textAlign: 'center', marginBottom: 8,
   },
-  iconCircle: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: '#21262d',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: '#30363d',
+  alarmDesc: {
+    color: TEXT_MID, fontSize: 13,
+    textAlign: 'center', marginBottom: 22,
+    lineHeight: 19, paddingHorizontal: 8,
   },
-  iconCircleActive: {
-    backgroundColor: '#8c1d1d',
-    borderColor: '#ff5252',
+  alarmBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: DANGER,
+    width: '100%', paddingVertical: 16, borderRadius: 16,
+    shadowColor: DANGER, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.30, shadowRadius: 8, elevation: 4,
   },
-  alarmIcon: {
-    fontSize: 40,
+  alarmBtnStop: {
+    backgroundColor: '#B91C1C',
+    shadowColor: '#B91C1C',
   },
-  alarmSectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#f0f6fc',
-    marginBottom: 8,
-    textAlign: 'center',
+  alarmBtnText: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 0.4 },
+
+  // Status badges
+  statusBadgesRow: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    justifyContent: 'center', gap: 10, marginTop: 14,
   },
-  alarmDescription: {
-    color: '#8b949e',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
-    paddingHorizontal: 10,
+  miniBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 20, borderWidth: 1,
   },
-  mainAlarmBtn: {
-    backgroundColor: '#e53935',
-    width: '100%',
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#e53935',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 8,
-    borderWidth: 2,
-    borderColor: '#ff6666',
+  miniBadgeSuccess: { backgroundColor: SUCCESS + '12', borderColor: SUCCESS + '40' },
+  miniBadgeWarn:    { backgroundColor: WARNING + '12', borderColor: WARNING + '40' },
+  miniBadgeNeutral: { backgroundColor: ICON_BG, borderColor: '#C5D8F0' },
+  miniBadgeText:    { fontSize: 12, fontWeight: '600' },
+
+  // Error
+  errorBox: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    marginTop: 14, backgroundColor: DANGER + '0D',
+    borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: DANGER + '30',
   },
-  stopAlarmBtn: {
-    backgroundColor: '#b71c1c',
-    borderColor: '#ff1744',
-    shadowColor: '#ff1744',
-  },
-  mainAlarmBtnText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  errorContainer: {
-    marginTop: 16,
-    backgroundColor: '#3d1414',
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ff4d4d',
-    width: '100%',
-  },
-  errorText: {
-    color: '#ff8a80',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  statusRowContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 10,
-    marginTop: 16,
-  },
-  miniStatusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  greenMiniBadge: {
-    backgroundColor: '#0d2818',
-    borderColor: '#3fb950',
-  },
-  orangeMiniBadge: {
-    backgroundColor: '#2d1800',
-    borderColor: '#f0883e',
-  },
-  grayMiniBadge: {
-    backgroundColor: '#161b22',
-    borderColor: '#30363d',
-  },
-  miniStatusText: {
-    color: '#f0f6fc',
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  errorBoxText: { color: DANGER, fontSize: 13, flex: 1, lineHeight: 18 },
 });
