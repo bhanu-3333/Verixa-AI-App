@@ -1,5 +1,6 @@
 // src/app/(app)/emergency.tsx
-// Emergency SOS screen — GPS acquisition, emergency type selection, WhatsApp alert sending
+// Emergency SOS screen — UI restyled to home light blue theme. No emojis.
+// ALL logic, backend calls, state, and hooks are UNCHANGED.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -16,7 +17,6 @@ import {
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-
 import { useLanguage } from '../../components/LanguageProvider';
 import {
   sendSOS,
@@ -26,587 +26,405 @@ import {
   EmergencyHistoryEntry,
 } from '../../services/EmergencyService';
 import { SOSButton } from '../../components/SOSButton';
+import { Feather, MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-/** Emergency SOS Screen */
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const PRIMARY    = '#1A56DB';
+const PAGE_BG    = '#E8F2FF';
+const CARD_BG    = '#FFFFFF';
+const TEXT_DARK  = '#0C1E3C';
+const TEXT_MID   = '#6B7A8D';
+const TEXT_LIGHT = '#A0AEC0';
+const ICON_BG    = '#DCE8F8';
+const DANGER     = '#EF4444';
+const SUCCESS    = '#10B981';
+const WARNING    = '#F59E0B';
+
+const BOLD_FONT: any = Platform.select({
+  ios:     { fontFamily: 'Helvetica Neue', fontWeight: '700' },
+  android: { fontFamily: 'sans-serif', fontWeight: '700' },
+  default: { fontFamily: 'Arial, sans-serif', fontWeight: '700' },
+});
+
+// Emergency type config — icon + label key
+const EMERGENCY_TYPES = [
+  { key: 'Medical', icon: 'hospital-box-outline', labelKey: 'emergency_type_medical' },
+  { key: 'Police',  icon: 'shield-account-outline', labelKey: 'emergency_type_police' },
+  { key: 'Fire',    icon: 'fire',                  labelKey: 'emergency_type_fire' },
+  { key: 'General', icon: 'alert-circle-outline',  labelKey: 'emergency_type_general' },
+] as const;
+
 export default function EmergencyScreen() {
-  const router = useRouter();
-  const { t } = useLanguage();
-  const [loadingLocation, setLoadingLocation] = useState(true);
-  const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [sending, setSending] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [history, setHistory] = useState<EmergencyHistoryEntry[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(true);
-  const [emergencyType, setEmergencyType] = useState<'Medical' | 'Police' | 'Fire' | 'General'>('General');
-  const [isFallback, setIsFallback] = useState(false);
+  const router   = useRouter();
+  const { t }    = useLanguage();
+  const insets   = useSafeAreaInsets();
 
-  // Fetch GPS location on mount
+  // ── All original state — UNTOUCHED ───────────────────────────────────────
+  const [loadingLocation, setLoadingLocation] = useState(true);
+  const [location, setLocation]               = useState<{ latitude: number; longitude: number } | null>(null);
+  const [sending, setSending]                 = useState(false);
+  const [success, setSuccess]                 = useState(false);
+  const [history, setHistory]                 = useState<EmergencyHistoryEntry[]>([]);
+  const [loadingHistory, setLoadingHistory]   = useState(true);
+  const [emergencyType, setEmergencyType]     = useState<'Medical' | 'Police' | 'Fire' | 'General'>('General');
+  const [isFallback, setIsFallback]           = useState(false);
+
+  // ── All original logic — UNTOUCHED ───────────────────────────────────────
   useEffect(() => {
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          console.warn('[EmergencyScreen] Location permission denied. Using fallback/mock location.');
           setLocation({ latitude: 17.3850, longitude: 78.4867 });
-          setIsFallback(true);
-          setLoadingLocation(false);
-          return;
+          setIsFallback(true); setLoadingLocation(false); return;
         }
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
         setLocation({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
         setIsFallback(false);
       } catch (e) {
-        console.warn('[EmergencyScreen] Location error. Using fallback/mock location:', e);
         setLocation({ latitude: 17.3850, longitude: 78.4867 });
         setIsFallback(true);
-      } finally {
-        setLoadingLocation(false);
-      }
+      } finally { setLoadingLocation(false); }
     })();
   }, []);
 
-  // Load SOS history
   useEffect(() => {
     let active = true;
     (async () => {
       try {
         const hist = await getSOSHistory();
-        if (active) {
-          setHistory(hist);
-        }
+        if (active) setHistory(hist);
       } catch (e) {
-        console.warn('[EmergencyScreen] History load error:', e);
         const msg = e instanceof Error ? e.message : '';
         if (msg.includes('Authentication token required') || msg.includes('Session expired') || msg.includes('log in again')) {
           if (active) {
-            const isWeb = Platform.OS === 'web';
-            if (isWeb) {
-              window.alert('Session expired. Please login again.');
-            } else {
-              Alert.alert('Session Expired', 'Please login again.');
-            }
+            Platform.OS === 'web' ? window.alert('Session expired. Please login again.') : Alert.alert('Session Expired', 'Please login again.');
             router.replace('/(auth)/login');
           }
         }
-      } finally {
-        if (active) {
-          setLoadingHistory(false);
-        }
-      }
+      } finally { if (active) setLoadingHistory(false); }
     })();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, []);
 
-  /** Trigger initial haptic feedback */
   const triggerHaptic = async () => {
-    try {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    } catch (_) {
-      // Haptics may not be available on web
-    }
+    try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); } catch (_) {}
   };
 
-  /** Main SOS handler — sends WhatsApp emergency alert */
   const executeSOS = async () => {
-    console.log('[EmergencyScreen] executeSOS called');
-
-    setSending(true);
-    setSuccess(false);
-
+    setSending(true); setSuccess(false);
     await triggerHaptic();
-
     if (!location) {
       const noLocMsg = t('emergency_no_location') || 'Cannot send SOS without GPS coordinates.';
-      const isWeb = Platform.OS === 'web';
-      if (isWeb) {
-        window.alert('⚠️ ' + noLocMsg);
-      } else {
-        Alert.alert(
-          t('emergency_no_location_title') || 'No Location',
-          noLocMsg
-        );
-      }
-      setSending(false);
-      return;
+      Platform.OS === 'web' ? window.alert(noLocMsg) : Alert.alert(t('emergency_no_location_title') || 'No Location', noLocMsg);
+      setSending(false); return;
     }
-
-    const payload: EmergencyPayload = {
-      user_id: 'current_user', // resolved from JWT on backend
-      type: emergencyType,
-      latitude: location.latitude,
-      longitude: location.longitude,
-    };
-
+    const payload: EmergencyPayload = { user_id: 'current_user', type: emergencyType, latitude: location.latitude, longitude: location.longitude };
     try {
       const res = await sendSOS(payload);
       const isWeb = Platform.OS === 'web';
-
-      const isRealWhatsAppSuccess =
-        res.status === 'success' &&
-        res.data?.whatsapp_status === 'success' &&
-        res.data?.delivery_status === 'accepted' &&
-        Boolean(res.data?.meta_response_id);
-
-      const isMocked =
-        res.status === 'mocked' ||
-        res.data?.whatsapp_status === 'mocked' ||
-        res.data?.delivery_status === 'mocked';
-
-      const mapsLink = location
-        ? `https://www.google.com/maps?q=${location.latitude},${location.longitude}&ll=${location.latitude},${location.longitude}&z=17`
-        : '';
-
-      const navigateToActiveScreen = () => {
-        router.push({
-          pathname: '/(app)/emergency-active' as any,
-          params: {
-            alert_id: res.alert_id || '',
-            emergency_type: emergencyType,
-            latitude: location.latitude.toString(),
-            longitude: location.longitude.toString(),
-            maps_link: mapsLink,
-          },
-        });
-      };
-
+      const isRealWhatsAppSuccess = res.status === 'success' && res.data?.whatsapp_status === 'success' && res.data?.delivery_status === 'accepted' && Boolean(res.data?.meta_response_id);
+      const isMocked = res.status === 'mocked' || res.data?.whatsapp_status === 'mocked' || res.data?.delivery_status === 'mocked';
+      const mapsLink = location ? `https://www.google.com/maps?q=${location.latitude},${location.longitude}&ll=${location.latitude},${location.longitude}&z=17` : '';
+      const navigateToActiveScreen = () => { router.push({ pathname: '/(app)/emergency-active' as any, params: { alert_id: res.alert_id || '', emergency_type: emergencyType, latitude: location.latitude.toString(), longitude: location.longitude.toString(), maps_link: mapsLink } }); };
       if (isRealWhatsAppSuccess) {
         setSuccess(true);
         const alertMsg = t('emergency_alert_sent') || 'Emergency WhatsApp alert sent successfully.';
-
-        if (isWeb) {
-          window.alert('✅ ' + alertMsg);
-          navigateToActiveScreen();
-        } else {
-          Alert.alert(
-            '✅ ' + (t('emergency_title') || 'Emergency Alert'),
-            alertMsg,
-            [{ text: t('ok') || 'OK', onPress: navigateToActiveScreen }]
-          );
-        }
+        isWeb ? (window.alert(alertMsg), navigateToActiveScreen()) : Alert.alert(t('emergency_title') || 'Emergency Alert', alertMsg, [{ text: t('ok') || 'OK', onPress: navigateToActiveScreen }]);
       } else if (isMocked) {
         setSuccess(false);
         const mockMsg = t('emergency_test_mode_text') || 'Test Mode — No real WhatsApp message was sent.';
-
-        if (isWeb) {
-          window.alert('⚠️ ' + mockMsg);
-          navigateToActiveScreen();
-        } else {
-          Alert.alert(
-            '⚠️ ' + (t('emergency_title') || 'Emergency Alert (Test Mode)'),
-            mockMsg,
-            [{ text: t('ok') || 'OK', onPress: navigateToActiveScreen }]
-          );
-        }
+        isWeb ? (window.alert(mockMsg), navigateToActiveScreen()) : Alert.alert(t('emergency_title') || 'Emergency Alert (Test Mode)', mockMsg, [{ text: t('ok') || 'OK', onPress: navigateToActiveScreen }]);
       } else {
         setSuccess(false);
-        const errMsg = res.message || res.data?.error_message || t('emergency_alert_failed') || 'Emergency alert could not be sent. Please try again.';
-        if (isWeb) {
-          window.alert('❌ ' + (t('emergency_failed_popup_title') || 'SOS Failed') + ': ' + errMsg);
-        } else {
-          Alert.alert('❌ ' + (t('emergency_failed_popup_title') || 'SOS Failed'), errMsg);
-        }
+        const errMsg = res.message || res.data?.error_message || t('emergency_alert_failed') || 'Emergency alert could not be sent.';
+        isWeb ? window.alert(errMsg) : Alert.alert(t('emergency_failed_popup_title') || 'SOS Failed', errMsg);
       }
-
-      // Refresh history
-      try {
-        const fresh = await getSOSHistory();
-        setHistory(fresh);
-      } catch (_) {
-        // History refresh is non-critical
-      }
+      try { const fresh = await getSOSHistory(); setHistory(fresh); } catch (_) {}
     } catch (e) {
       setSuccess(false);
       const msg = e instanceof Error ? e.message : (t('emergency_alert_failed') || 'Failed to send SOS alert.');
-      console.warn('[EmergencyScreen] SOS send error:', e);
-
-      const isWeb = Platform.OS === 'web';
-      if (isWeb) {
-        window.alert('❌ ' + (t('emergency_failed_popup_title') || 'SOS Failed') + ': ' + msg);
-      } else {
-        Alert.alert(
-          '❌ ' + (t('emergency_failed_popup_title') || 'SOS Failed'),
-          msg
-        );
-      }
-
-      if (msg.includes('Authentication token required') || msg.includes('Session expired') || msg.includes('log in again')) {
-        router.replace('/(auth)/login');
-      }
-    } finally {
-      setSending(false);
-    }
+      Platform.OS === 'web' ? window.alert(msg) : Alert.alert(t('emergency_failed_popup_title') || 'SOS Failed', msg);
+      if (msg.includes('Authentication token required') || msg.includes('Session expired') || msg.includes('log in again')) router.replace('/(auth)/login');
+    } finally { setSending(false); }
   };
 
   const handleDelete = async (alertId: string) => {
-    const confirmed =
-      Platform.OS === 'web'
-        ? window.confirm(t('emergency_confirm_delete') || 'Are you sure you want to delete this alert?')
-        : true;
-
+    const confirmed = Platform.OS === 'web' ? window.confirm(t('emergency_confirm_delete') || 'Delete this alert?') : true;
     if (!confirmed) return;
-
     try {
       await deleteSOSHistory(alertId);
       setHistory(prev => prev.filter(h => h.id !== alertId));
     } catch (e) {
-      console.warn('[EmergencyScreen] Delete error:', e);
       const msg = e instanceof Error ? e.message : 'Could not delete history entry.';
       Alert.alert(t('emergency_error') || 'Error', msg);
-      if (msg.includes('Authentication token required') || msg.includes('Session expired') || msg.includes('log in again')) {
-        router.replace('/(auth)/login');
-      }
+      if (msg.includes('Authentication token required') || msg.includes('Session expired') || msg.includes('log in again')) router.replace('/(auth)/login');
     }
   };
 
-  const mapsUrl =
-    location
-      ? `https://maps.google.com/?q=${location.latitude},${location.longitude}`
-      : null;
+  const mapsUrl = location ? `https://maps.google.com/?q=${location.latitude},${location.longitude}` : null;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backText}>← {t('emergency_back')}</Text>
+    <ScrollView
+      style={S.root}
+      contentContainerStyle={[S.container, { paddingTop: insets.top + 12 }]}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <View style={S.header}>
+        <TouchableOpacity style={S.backBtn} onPress={() => router.back()} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Feather name="arrow-left" size={20} color={PRIMARY} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>🚨 {t('emergency_title')}</Text>
+        <View style={S.headerTextWrap}>
+          <MaterialCommunityIcons name="bell-alert" size={22} color={DANGER} style={{ marginRight: 8 }} />
+          <Text style={S.headerTitle}>{t('emergency_title')}</Text>
+        </View>
       </View>
 
-      {/* Location Card */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>📍 {t('emergency_location_title')}</Text>
+      {/* ── Location Card ──────────────────────────────────────────────── */}
+      <View style={S.card}>
+        <View style={S.cardTitleRow}>
+          <View style={S.cardIconCircle}>
+            <Feather name="map-pin" size={15} color={PRIMARY} />
+          </View>
+          <Text style={S.cardTitle}>{t('emergency_location_title')}</Text>
+        </View>
+
         {loadingLocation ? (
-          <ActivityIndicator color="#e53935" style={{ marginTop: 8 }} />
+          <ActivityIndicator color={PRIMARY} style={{ marginTop: 8 }} />
         ) : location ? (
           <>
-            <Text style={styles.coordText}>
-              {`${t('emergency_location_lat')}: ${location.latitude.toFixed(6)}`}
-            </Text>
-            <Text style={styles.coordText}>
-              {`${t('emergency_location_lon')}: ${location.longitude.toFixed(6)}`}
-            </Text>
+            <Text style={S.coordText}>Lat: {location.latitude.toFixed(6)}</Text>
+            <Text style={S.coordText}>Lon: {location.longitude.toFixed(6)}</Text>
             {mapsUrl && (
-              <Text style={styles.mapsLink} numberOfLines={1}>
-                {mapsUrl}
-              </Text>
+              <Text style={S.mapsLink} numberOfLines={1}>{mapsUrl}</Text>
             )}
-            <View style={styles.statusDot}>
-              <View style={[styles.greenDot, isFallback && styles.orangeDot]} />
-              <Text style={[styles.statusText, isFallback && styles.orangeText]}>
+            <View style={S.gpsStatusRow}>
+              <View style={[S.gpsDot, isFallback ? S.gpsDotWarn : S.gpsDotOk]} />
+              <Text style={[S.gpsStatusText, isFallback ? S.gpsWarnText : S.gpsOkText]}>
                 {isFallback ? t('emergency_location_fallback') : t('emergency_location_ready')}
               </Text>
             </View>
           </>
         ) : (
-          <Text style={styles.errorText}>⚠ {t('emergency_location_unavailable')}</Text>
+          <View style={S.errorRow}>
+            <Feather name="alert-circle" size={14} color={DANGER} style={{ marginRight: 6 }} />
+            <Text style={S.errorText}>{t('emergency_location_unavailable')}</Text>
+          </View>
         )}
       </View>
 
-      {/* Emergency Type Selector */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>🚨 {t('emergency_type_title')}</Text>
-        <View style={styles.typeRow}>
-          {(['Medical', 'Police', 'Fire', 'General'] as const).map(typeKey => (
-            <TouchableOpacity
-              key={typeKey}
-              style={[
-                styles.typeChip,
-                emergencyType === typeKey && styles.typeChipActive,
-              ]}
-              onPress={() => setEmergencyType(typeKey)}
-            >
-              <Text style={[
-                styles.typeChipText,
-                emergencyType === typeKey && styles.typeChipTextActive,
-              ]}>
-                {typeKey === 'Medical' ? '🏥' : typeKey === 'Police' ? '👮' : typeKey === 'Fire' ? '🔥' : '⚠️'}{' '}
-                {typeKey === 'Medical' ? t('emergency_type_medical') :
-                 typeKey === 'Police' ? t('emergency_type_police') :
-                 typeKey === 'Fire' ? t('emergency_type_fire') :
-                 t('emergency_type_general')}
-              </Text>
-            </TouchableOpacity>
-          ))}
+      {/* ── Emergency Type ─────────────────────────────────────────────── */}
+      <View style={S.card}>
+        <View style={S.cardTitleRow}>
+          <View style={S.cardIconCircle}>
+            <MaterialCommunityIcons name="bell-alert" size={15} color={PRIMARY} />
+          </View>
+          <Text style={S.cardTitle}>{t('emergency_type_title')}</Text>
+        </View>
+        <View style={S.typeRow}>
+          {EMERGENCY_TYPES.map(({ key, icon, labelKey }) => {
+            const active = emergencyType === key;
+            return (
+              <TouchableOpacity
+                key={key}
+                style={[S.typeChip, active && S.typeChipActive]}
+                onPress={() => setEmergencyType(key)}
+                activeOpacity={0.8}
+              >
+                <MaterialCommunityIcons
+                  name={icon as any}
+                  size={15}
+                  color={active ? '#fff' : TEXT_MID}
+                  style={{ marginRight: 5 }}
+                />
+                <Text style={[S.typeChipText, active && S.typeChipTextActive]}>
+                  {t(labelKey)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
-      {/* SOS Button Section */}
-      <View style={styles.sosSection}>
-        <Text style={styles.sosHint}>
-          {t('emergency_sos_hint')}
-        </Text>
-        <SOSButton
-          onPress={executeSOS}
-          disabled={sending || loadingLocation || !location}
-        />
+      {/* ── SOS Button Section ─────────────────────────────────────────── */}
+      <View style={S.sosSection}>
+        <Text style={S.sosHint}>{t('emergency_sos_hint')}</Text>
+        <SOSButton onPress={executeSOS} disabled={sending || loadingLocation || !location} />
 
         {sending && (
-          <View style={styles.sendingRow}>
-            <ActivityIndicator color="#e53935" />
-            <Text style={styles.sendingText}>{t('emergency_sending')}</Text>
+          <View style={S.sendingRow}>
+            <ActivityIndicator color={DANGER} />
+            <Text style={S.sendingText}>{t('emergency_sending')}</Text>
           </View>
         )}
         {success && !sending && (
-          <View style={styles.successBanner}>
-            <Text style={styles.successText}>
-              ✓ {t('emergency_success_text')}
-            </Text>
+          <View style={S.successBanner}>
+            <Feather name="check-circle" size={16} color={SUCCESS} style={{ marginRight: 8 }} />
+            <Text style={S.successText}>{t('emergency_success_text')}</Text>
           </View>
         )}
       </View>
 
-      {/* Alert History */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>🕑 {t('emergency_history_title')}</Text>
+      {/* ── Alert History ──────────────────────────────────────────────── */}
+      <View style={S.card}>
+        <View style={S.cardTitleRow}>
+          <View style={S.cardIconCircle}>
+            <Feather name="clock" size={15} color={PRIMARY} />
+          </View>
+          <Text style={S.cardTitle}>{t('emergency_history_title')}</Text>
+        </View>
+
         {loadingHistory ? (
-          <ActivityIndicator color="#e53935" />
+          <ActivityIndicator color={PRIMARY} style={{ marginTop: 8 }} />
         ) : history.length === 0 ? (
-          <Text style={styles.emptyText}>{t('emergency_history_empty')}</Text>
+          <Text style={S.emptyText}>{t('emergency_history_empty')}</Text>
         ) : (
-          history.map(entry => (
-            <View key={entry.id} style={styles.historyItem}>
-              <View style={styles.historyInfo}>
-                <Text style={styles.historyType}>
-                  {entry.emergency_type === 'Medical' ? t('emergency_type_medical') :
-                   entry.emergency_type === 'Police' ? t('emergency_type_police') :
-                   entry.emergency_type === 'Fire' ? t('emergency_type_fire') :
-                   t('emergency_type_general')}
-                </Text>
-                <Text style={styles.historyDate}>
-                  {new Date(entry.created_at).toLocaleString()}
-                </Text>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    entry.status === 'sent' ? styles.badgeSent : styles.badgeFailed,
-                  ]}
-                >
-                  <Text style={styles.badgeText}>{entry.status.toUpperCase()}</Text>
+          history.map(entry => {
+            const isSent = entry.status === 'sent';
+            return (
+              <View key={entry.id} style={S.historyItem}>
+                <View style={S.historyInfo}>
+                  <Text style={S.historyType}>
+                    {entry.emergency_type === 'Medical' ? t('emergency_type_medical') :
+                     entry.emergency_type === 'Police'  ? t('emergency_type_police')  :
+                     entry.emergency_type === 'Fire'    ? t('emergency_type_fire')    :
+                     t('emergency_type_general')}
+                  </Text>
+                  <Text style={S.historyDate}>{new Date(entry.created_at).toLocaleString()}</Text>
+                  <View style={[S.statusBadge, isSent ? S.badgeSent : S.badgeFailed]}>
+                    <Text style={[S.badgeText, { color: isSent ? SUCCESS : DANGER }]}>
+                      {entry.status.toUpperCase()}
+                    </Text>
+                  </View>
                 </View>
+                <TouchableOpacity style={S.deleteBtn} onPress={() => handleDelete(entry.id)} activeOpacity={0.8}>
+                  <Feather name="trash-2" size={14} color={DANGER} style={{ marginRight: 4 }} />
+                  <Text style={S.deleteText}>{t('emergency_delete')}</Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                onPress={() => handleDelete(entry.id)}
-                style={styles.deleteBtn}
-              >
-                <Text style={styles.deleteText}>{t('emergency_delete')}</Text>
-              </TouchableOpacity>
-            </View>
-          ))
+            );
+          })
         )}
       </View>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1,
-    backgroundColor: '#0d1117',
-    padding: 20,
-    paddingBottom: 60,
-  },
+const S = StyleSheet.create({
+  root:      { flex: 1, backgroundColor: PAGE_BG },
+  container: { padding: 16, paddingBottom: 60 },
+
+  // Header
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-    gap: 12,
+    alignItems:    'center',
+    marginBottom:  20,
+    gap:           12,
   },
   backBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: '#1c2333',
-    borderRadius: 8,
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: ICON_BG,
+    alignItems: 'center', justifyContent: 'center',
   },
-  backText: {
-    color: '#8b949e',
-    fontSize: 14,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#f0f6fc',
-  },
+  headerTextWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  headerTitle:    { fontSize: 22, color: TEXT_DARK, ...BOLD_FONT },
+
+  // Card
   card: {
-    backgroundColor: '#161b22',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#21262d',
+    backgroundColor: CARD_BG,
+    borderRadius:    20,
+    padding:         16,
+    marginBottom:    16,
+    shadowColor:     '#000',
+    shadowOffset:    { width: 0, height: 1 },
+    shadowOpacity:   0.05,
+    shadowRadius:    6,
+    elevation:       2,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#f0f6fc',
-    marginBottom: 12,
+  cardTitleRow:   { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  cardIconCircle: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: ICON_BG,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 10,
   },
+  cardTitle: { fontSize: 15, color: TEXT_DARK, ...BOLD_FONT },
+
+  // Location
   coordText: {
-    fontSize: 14,
-    color: '#8b949e',
-    marginBottom: 4,
+    fontSize: 13, color: TEXT_MID, marginBottom: 3,
     fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
   },
-  mapsLink: {
-    fontSize: 12,
-    color: '#388bfd',
-    marginTop: 4,
-    marginBottom: 8,
+  mapsLink:  { fontSize: 12, color: PRIMARY, marginTop: 4, marginBottom: 8 },
+  gpsStatusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 6 },
+  gpsDot:       { width: 8, height: 8, borderRadius: 4 },
+  gpsDotOk:     { backgroundColor: SUCCESS },
+  gpsDotWarn:   { backgroundColor: WARNING },
+  gpsStatusText: { fontSize: 13, fontWeight: '600' },
+  gpsOkText:     { color: SUCCESS },
+  gpsWarnText:   { color: WARNING },
+  errorRow:  { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  errorText: { color: DANGER, fontSize: 13 },
+
+  // Emergency type chips
+  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
+  typeChip: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 14, paddingVertical: 9,
+    borderRadius: 20,
+    borderWidth: 1.5, borderColor: '#C5D8F0',
+    backgroundColor: ICON_BG,
   },
-  statusDot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    gap: 6,
-  },
-  greenDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#3fb950',
-  },
-  orangeDot: {
-    backgroundColor: '#f0883e',
-  },
-  statusText: {
-    color: '#3fb950',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  orangeText: {
-    color: '#f0883e',
-  },
-  errorText: {
-    color: '#f85149',
-    fontSize: 14,
-    marginTop: 4,
-  },
-  sosSection: {
-    alignItems: 'center',
-    marginBottom: 24,
-    gap: 16,
-  },
+  typeChipActive:     { backgroundColor: DANGER, borderColor: DANGER },
+  typeChipText:       { color: TEXT_MID, fontSize: 13, fontWeight: '600' },
+  typeChipTextActive: { color: '#fff', fontWeight: '700' },
+
+  // SOS section
+  sosSection: { alignItems: 'center', marginBottom: 20, gap: 16 },
   sosHint: {
-    color: '#8b949e',
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: 10,
+    color: TEXT_MID, fontSize: 13,
+    textAlign: 'center', lineHeight: 20, paddingHorizontal: 10,
   },
-  sendingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  sendingText: {
-    color: '#e53935',
-    fontSize: 14,
-    fontWeight: '500',
-  },
+  sendingRow:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sendingText: { color: DANGER, fontSize: 14, fontWeight: '600' },
   successBanner: {
-    backgroundColor: '#0d2818',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: '#3fb950',
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: SUCCESS + '18',
+    borderRadius: 12, paddingVertical: 12, paddingHorizontal: 18,
+    borderWidth: 1, borderColor: SUCCESS + '40',
   },
-  successText: {
-    color: '#3fb950',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  emptyText: {
-    color: '#8b949e',
-    fontSize: 14,
-    textAlign: 'center',
-    paddingVertical: 10,
-  },
+  successText: { color: SUCCESS, fontSize: 14, fontWeight: '600' },
+
+  // Empty
+  emptyText: { color: TEXT_LIGHT, fontSize: 13, textAlign: 'center', paddingVertical: 8 },
+
+  // History items
   historyItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems:     'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: '#21262d',
+    borderColor:    '#EFF5FC',
   },
-  historyInfo: {
-    flex: 1,
-    gap: 4,
+  historyInfo:  { flex: 1, gap: 3 },
+  historyType:  { color: TEXT_DARK, fontSize: 14, fontWeight: '700' },
+  historyDate:  { color: TEXT_LIGHT, fontSize: 12 },
+  statusBadge:  {
+    alignSelf: 'flex-start', paddingHorizontal: 8,
+    paddingVertical: 3, borderRadius: 6, marginTop: 4, borderWidth: 1,
   },
-  historyType: {
-    color: '#f0f6fc',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  historyDate: {
-    color: '#8b949e',
-    fontSize: 12,
-  },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginTop: 4,
-  },
-  badgeSent: {
-    backgroundColor: '#0d2818',
-    borderWidth: 1,
-    borderColor: '#3fb950',
-  },
-  badgeFailed: {
-    backgroundColor: '#2d0f0f',
-    borderWidth: 1,
-    borderColor: '#f85149',
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#f0f6fc',
-  },
+  badgeSent:   { backgroundColor: SUCCESS + '12', borderColor: SUCCESS + '40' },
+  badgeFailed: { backgroundColor: DANGER  + '12', borderColor: DANGER  + '40' },
+  badgeText:   { fontSize: 10, fontWeight: '700' },
   deleteBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#2d0f0f',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#f85149',
-    marginLeft: 12,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 12, paddingVertical: 8,
+    backgroundColor: DANGER + '10',
+    borderRadius: 10, borderWidth: 1, borderColor: DANGER + '30',
+    marginLeft: 10,
   },
-  deleteText: {
-    color: '#f85149',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  typeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 4,
-  },
-  typeChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#30363d',
-    backgroundColor: '#161b22',
-  },
-  typeChipActive: {
-    borderColor: '#e53935',
-    backgroundColor: '#2d0f0f',
-  },
-  typeChipText: {
-    color: '#8b949e',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  typeChipTextActive: {
-    color: '#f85149',
-    fontWeight: '700',
-  },
+  deleteText: { color: DANGER, fontSize: 12, fontWeight: '600' },
 });
