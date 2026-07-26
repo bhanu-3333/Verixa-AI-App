@@ -1,22 +1,24 @@
 /**
  * App group layout — protects all authenticated screens.
  * Redirects to login if no JWT found in storage.
+ * SharedHeader is hidden on the home screen (it has its own transparent header).
  */
 
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Platform } from 'react-native';
-import { Stack, router } from 'expo-router';
+import { Stack, router, usePathname } from 'expo-router';
 import { getToken } from '../../utils/storage';
-// Language support — provider kept for multilingual infrastructure
-import { LanguageProvider } from '../../components/LanguageProvider';
 import { SharedHeader } from '../../components/SharedHeader';
 
 export default function AppLayout() {
   const [ready, setReady] = useState(false);
+  const pathname = usePathname();
+
+  // Hide SharedHeader on home — home has its own transparent floating header
+  const hideHeader = pathname === '/' || pathname === '/home' || pathname.endsWith('/home');
 
   useEffect(() => {
     async function check() {
-      // Small delay on web ensures AsyncStorage (localStorage) has flushed
       if (Platform.OS === 'web') {
         await new Promise(r => setTimeout(r, 150));
       }
@@ -38,10 +40,9 @@ export default function AppLayout() {
     );
   }
 
-  // SharedHeader and navigation stack are wrapped by the top-level LanguageProvider in root _layout.tsx
   return (
     <View style={{ flex: 1 }}>
-      <SharedHeader />
+      {!hideHeader && <SharedHeader />}
       <Stack screenOptions={{ headerShown: false }} />
     </View>
   );
