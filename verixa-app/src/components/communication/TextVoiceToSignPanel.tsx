@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator,
 import { translateTextToSigml } from '../../services/avatarService';
 import { useLanguage } from '../LanguageProvider';
 import { SupportedLanguage } from '../../services/LanguageService';
+import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 
 interface TextVoiceToSignPanelProps {
   avatarRef: React.RefObject<any>;
@@ -11,15 +12,16 @@ interface TextVoiceToSignPanelProps {
   staffType?: 'staff' | 'doctor';
 }
 
-const C = {
-  primary: '#208AEF',
-  accent: '#00D2FF',
-  cardBg: '#151D30',
-  text: '#F1F5F9',
-  muted: '#94A3B8',
-  border: '#1E293B',
-  success: '#10B981',
-};
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const PRIMARY   = '#1A56DB';
+const PAGE_BG   = '#E8F2FF';
+const CARD_BG   = '#FFFFFF';
+const TEXT_DARK = '#0C1E3C';
+const TEXT_MID  = '#6B7A8D';
+const TEXT_LIGHT = '#A0AEC0';
+const ICON_BG   = '#DCE8F8';
+const SUCCESS   = '#10B981';
+const DANGER    = '#EF4444';
 
 export const TextVoiceToSignPanel: React.FC<TextVoiceToSignPanelProps> = ({
   avatarRef,
@@ -27,20 +29,19 @@ export const TextVoiceToSignPanel: React.FC<TextVoiceToSignPanelProps> = ({
   onSendTextMessage,
   staffType = 'staff',
 }) => {
+  // ── All original logic — UNTOUCHED ───────────────────────────────────────
   const { language } = useLanguage();
-  const isTamil = language === SupportedLanguage.TA;
-
-  const [inputMessage, setInputMessage] = useState('');
-  const [isTranslating, setIsTranslating] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [recognizedVoiceText, setRecognizedVoiceText] = useState<string | null>(null);
-
+  const isTamil    = language === SupportedLanguage.TA;
   const isHospital = staffType === 'doctor';
+
+  const [inputMessage, setInputMessage]               = useState('');
+  const [isTranslating, setIsTranslating]             = useState(false);
+  const [isListening, setIsListening]                 = useState(false);
+  const [recognizedVoiceText, setRecognizedVoiceText] = useState<string | null>(null);
 
   const handleTranslateAndPlay = useCallback(async (textToPlay: string) => {
     if (!textToPlay.trim()) return;
     const cleanText = textToPlay.trim();
-
     setIsTranslating(true);
     try {
       const sigml = await translateTextToSigml(cleanText.toLowerCase());
@@ -62,38 +63,28 @@ export const TextVoiceToSignPanel: React.FC<TextVoiceToSignPanelProps> = ({
   }, [inputMessage, handleTranslateAndPlay]);
 
   const handleVoiceInput = useCallback(() => {
-    if (isListening) {
-      setIsListening(false);
-      return;
-    }
-
+    if (isListening) { setIsListening(false); return; }
     if (Platform.OS === 'web' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
       const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const rec = new SR();
       rec.lang = isTamil ? 'ta-IN' : 'en-US';
       rec.interimResults = false;
       rec.maxAlternatives = 1;
-
-      rec.onstart = () => setIsListening(true);
-      rec.onend = () => setIsListening(false);
-      rec.onerror = () => setIsListening(false);
-
+      rec.onstart  = () => setIsListening(true);
+      rec.onend    = () => setIsListening(false);
+      rec.onerror  = () => setIsListening(false);
       rec.onresult = (event: any) => {
         const spoken = event.results[0]?.[0]?.transcript;
-        if (spoken) {
-          setRecognizedVoiceText(spoken);
-          setInputMessage(spoken);
-        }
+        if (spoken) { setRecognizedVoiceText(spoken); setInputMessage(spoken); }
       };
-
       rec.start();
     } else {
       setIsListening(true);
       setTimeout(() => {
         setIsListening(false);
         const fallbackText = isTamil
-          ? isHospital ? 'தயவுசெய்து உங்கள் அடையாள சான்றை வழங்கவும்' : 'தயவுசெய்து உங்கள் சான்றுகளை சரிபார்க்கவும்'
-          : isHospital ? 'Please provide your identity proof.' : 'Please confirm your account details.';
+          ? (isHospital ? 'தயவுசெய்து உங்கள் அடையாள சான்றை வழங்கவும்' : 'தயவுசெய்து உங்கள் சான்றுகளை சரிபார்க்கவும்')
+          : (isHospital ? 'Please provide your identity proof.' : 'Please confirm your account details.');
         setRecognizedVoiceText(fallbackText);
         setInputMessage(fallbackText);
       }, 1200);
@@ -101,76 +92,92 @@ export const TextVoiceToSignPanel: React.FC<TextVoiceToSignPanelProps> = ({
   }, [isListening, isTamil, isHospital]);
 
   return (
-    <View style={styles.panel}>
-      <Text style={styles.title}>
-        {isHospital ? '🧑‍⚕️' : '🧑‍💼'}{' '}
-        {isTamil
-          ? isHospital ? 'மருத்துவர் → குறியீட்டு மொழி' : 'வங்கி ஊழியர் → குறியீட்டு மொழி'
-          : isHospital ? 'Doctor → Sign Language' : 'Bank Staff → Sign Language'}
-      </Text>
+    <View style={S.panel}>
+      {/* Title */}
+      <View style={S.titleRow}>
+        <View style={S.titleIconCircle}>
+          <MaterialCommunityIcons
+            name={isHospital ? 'doctor' : 'account-tie'}
+            size={18}
+            color={PRIMARY}
+          />
+        </View>
+        <Text style={S.title}>
+          {isTamil
+            ? (isHospital ? 'மருத்துவர் → குறியீட்டு மொழி' : 'வங்கி ஊழியர் → குறியீட்டு மொழி')
+            : (isHospital ? 'Doctor → Sign Language' : 'Bank Staff → Sign Language')}
+        </Text>
+      </View>
 
-      <Text style={styles.hint}>
+      <Text style={S.hint}>
         {isTamil
-          ? isHospital
+          ? (isHospital
             ? 'நோயாளிக்கு அனுப்ப வேண்டிய செய்தியை தட்டச்சு செய்யுங்கள் அல்லது பேசுங்கள்.'
-            : 'வாடிக்கையாளருக்கு அனுப்ப வேண்டிய செய்தியை தட்டச்சு செய்யுங்கள் அல்லது பேசுங்கள்.'
-          : isHospital
+            : 'வாடிக்கையாளருக்கு அனுப்ப வேண்டிய செய்தியை தட்டச்சு செய்யுங்கள் அல்லது பேசுங்கள்.')
+          : (isHospital
             ? 'Type or speak a message for the patient to translate into Sign Language.'
-            : 'Type or speak a message for the customer to translate into Sign Language.'}
+            : 'Type or speak a message for the customer to translate into Sign Language.')}
       </Text>
 
-      {/* Input box */}
-      <View style={styles.inputContainer}>
+      {/* Input + mic */}
+      <View style={S.inputRow}>
         <TextInput
-          style={styles.textInput}
+          style={S.textInput}
           value={inputMessage}
           onChangeText={setInputMessage}
           placeholder={
             isTamil
-              ? isHospital ? 'நோயாளிக்கான செய்தி...' : 'வாடிக்கையாளருக்கான செய்தி...'
-              : isHospital ? 'Type message for the patient...' : 'Type message for the customer...'
+              ? (isHospital ? 'நோயாளிக்கான செய்தி...' : 'வாடிக்கையாளருக்கான செய்தி...')
+              : (isHospital ? 'Type message for the patient...' : 'Type message for the customer...')
           }
-          placeholderTextColor="#64748b"
+          placeholderTextColor={TEXT_LIGHT}
           returnKeyType="send"
           onSubmitEditing={handleTextSubmit}
         />
-
         <TouchableOpacity
-          style={[styles.voiceBtn, isListening && styles.voiceBtnActive]}
+          style={[S.micBtn, isListening && S.micBtnActive]}
           onPress={handleVoiceInput}
-          activeOpacity={0.8}
+          activeOpacity={0.85}
         >
-          <Text style={styles.voiceBtnIcon}>{isListening ? '🎙' : '🎤'}</Text>
+          <MaterialCommunityIcons
+            name={isListening ? 'stop' : 'microphone'}
+            size={18}
+            color={isListening ? '#fff' : PRIMARY}
+          />
         </TouchableOpacity>
       </View>
 
-      {/* Recognized Voice Text display */}
+      {/* Recognized speech display */}
       {recognizedVoiceText ? (
-        <View style={styles.speechDisplayBox}>
-          <Text style={styles.speechDisplayLabel}>{isTamil ? 'உணரப்பட்ட பேச்சு:' : 'Recognized Speech:'}</Text>
-          <Text style={styles.speechDisplayText}>"{recognizedVoiceText}"</Text>
+        <View style={S.speechBox}>
+          <Text style={S.speechLabel}>{isTamil ? 'உணரப்பட்ட பேச்சு:' : 'Recognized Speech:'}</Text>
+          <Text style={S.speechText}>"{recognizedVoiceText}"</Text>
         </View>
       ) : null}
 
-      {/* Submit button */}
+      {/* Submit */}
       <TouchableOpacity
-        style={[styles.submitBtn, (!inputMessage.trim() || isTranslating) && styles.btnDisabled]}
+        style={[S.submitBtn, (!inputMessage.trim() || isTranslating) && S.btnDisabled]}
         disabled={!inputMessage.trim() || isTranslating}
         onPress={handleTextSubmit}
-        activeOpacity={0.8}
+        activeOpacity={0.85}
       >
-        {isTranslating ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
-        ) : (
-          <Text style={styles.submitBtnText}>🤟 {isTamil ? 'குறியீட்டு மொழியில் காட்டு' : 'Show in Sign Language'}</Text>
-        )}
+        {isTranslating
+          ? <ActivityIndicator size="small" color="#fff" />
+          : <>
+              <MaterialCommunityIcons name="hand-wave" size={16} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={S.submitBtnText}>
+                {isTamil ? 'குறியீட்டு மொழியில் காட்டு' : 'Show in Sign Language'}
+              </Text>
+            </>
+        }
       </TouchableOpacity>
 
-      {/* Avatar Loading status banner */}
+      {/* Avatar preparing banner */}
       {!avatarReady && (
-        <View style={styles.preparingBanner}>
-          <ActivityIndicator size="small" color={C.primary} />
-          <Text style={styles.preparingText}>
+        <View style={S.preparingBanner}>
+          <ActivityIndicator size="small" color={PRIMARY} />
+          <Text style={S.preparingText}>
             {isTamil ? 'குறியீட்டு மொழி அவதார் தயாராகிறது...' : 'Preparing Sign Language Avatar...'}
           </Text>
         </View>
@@ -179,106 +186,86 @@ export const TextVoiceToSignPanel: React.FC<TextVoiceToSignPanelProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+const S = StyleSheet.create({
   panel: {
-    backgroundColor: C.cardBg,
-    borderColor: C.border,
-    borderWidth: 1.5,
-    borderRadius: 14,
-    padding: 18,
-    marginTop: 12,
-    gap: 12,
+    backgroundColor: CARD_BG,
+    borderColor:     '#C5D8F0',
+    borderWidth:     1.5,
+    borderRadius:    20,
+    padding:         16,
+    marginTop:       12,
+    gap:             12,
+    shadowColor:     '#000',
+    shadowOffset:    { width: 0, height: 1 },
+    shadowOpacity:   0.05,
+    shadowRadius:    6,
+    elevation:       2,
   },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: C.text,
+  titleRow:        { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  titleIconCircle: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: ICON_BG, alignItems: 'center', justifyContent: 'center',
   },
-  hint: {
-    fontSize: 13,
-    color: C.muted,
-    lineHeight: 18,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  title: { fontSize: 16, fontWeight: '700', color: TEXT_DARK, flex: 1 },
+  hint:  { fontSize: 13, color: TEXT_MID, lineHeight: 18 },
+
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   textInput: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-    borderColor: C.border,
-    borderWidth: 1,
-    borderRadius: 10,
+    flex:              1,
+    backgroundColor:   PAGE_BG,
+    borderColor:       '#C5D8F0',
+    borderWidth:       1.5,
+    borderRadius:      12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: C.text,
+    paddingVertical:   12,
+    fontSize:          14,
+    color:             TEXT_DARK,
   },
-  voiceBtn: {
-    backgroundColor: '#1E293B',
-    padding: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
+  micBtn: {
+    width:           42,
+    height:          42,
+    borderRadius:    21,
+    backgroundColor: ICON_BG,
+    alignItems:      'center',
+    justifyContent:  'center',
+    borderWidth:     1.5,
+    borderColor:     '#C5D8F0',
   },
-  voiceBtnActive: {
-    borderColor: C.accent,
-    backgroundColor: 'rgba(0, 210, 255, 0.2)',
+  micBtnActive: { backgroundColor: DANGER, borderColor: DANGER },
+
+  speechBox: {
+    backgroundColor: PAGE_BG, borderRadius: 10, padding: 10,
+    borderWidth: 1.5, borderColor: '#C5D8F0',
   },
-  voiceBtnIcon: {
-    fontSize: 18,
-  },
-  speechDisplayBox: {
-    backgroundColor: '#0B0F19',
-    borderRadius: 8,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  speechDisplayLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: C.muted,
-    marginBottom: 2,
-  },
-  speechDisplayText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: C.accent,
-    fontStyle: 'italic',
-  },
+  speechLabel: { fontSize: 11, fontWeight: '700', color: TEXT_MID, marginBottom: 3 },
+  speechText:  { fontSize: 14, fontWeight: '600', color: PRIMARY, fontStyle: 'italic' },
+
   submitBtn: {
-    backgroundColor: C.primary,
+    flexDirection:   'row',
+    alignItems:      'center',
+    justifyContent:  'center',
+    backgroundColor: PRIMARY,
     paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius:    14,
+    shadowColor:     PRIMARY,
+    shadowOffset:    { width: 0, height: 4 },
+    shadowOpacity:   0.25,
+    shadowRadius:    8,
+    elevation:       4,
   },
-  btnDisabled: {
-    opacity: 0.5,
-  },
-  submitBtnText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  btnDisabled:    { opacity: 0.45, shadowOpacity: 0 },
+  submitBtnText:  { color: '#fff', fontSize: 14, fontWeight: '700' },
+
   preparingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#0F172A',
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: C.border,
+    flexDirection:   'row',
+    alignItems:      'center',
+    justifyContent:  'center',
+    gap:             8,
+    backgroundColor: ICON_BG,
+    padding:         10,
+    borderRadius:    10,
+    borderWidth:     1,
+    borderColor:     '#C5D8F0',
   },
-  preparingText: {
-    fontSize: 12,
-    color: C.muted,
-    fontWeight: '600',
-  },
+  preparingText: { fontSize: 12, color: TEXT_MID, fontWeight: '600' },
 });
