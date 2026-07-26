@@ -28,6 +28,8 @@ import { CommunicationModeSelector, CommunicationMode } from '../../components/c
 import { SpeakReportPanel } from '../../components/communication/SpeakReportPanel';
 import { SignToTextVoicePanel } from '../../components/communication/SignToTextVoicePanel';
 import { TextVoiceToSignPanel } from '../../components/communication/TextVoiceToSignPanel';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 // Standard Symptoms list for Screen 1
@@ -143,14 +145,17 @@ const BACK_HOTSPOTS: HotspotPoint[] = [
   { id: 'b_r_ankle', labelKey: 'part_right_ankle', defaultName: 'Right Ankle', x: 62, y: 88 },
 ];
 
+// ─── Design tokens — mirrors home.tsx ────────────────────────────────────────
 const C = {
-  primary: '#00FFCC',
-  bg: '#0f172a',
-  cardBg: '#1e293b',
-  text: '#f8fafc',
-  muted: '#94a3b8',
-  danger: '#ef4444',
-  border: '#334155',
+  primary: '#1A56DB',
+  bg:      '#E8F2FF',
+  cardBg:  '#FFFFFF',
+  text:    '#0C1E3C',
+  muted:   '#6B7A8D',
+  danger:  '#EF4444',
+  border:  '#C5D8F0',
+  iconBg:  '#DCE8F8',
+  success: '#10B981',
 };
 
 // ── Animated Hotspot Component ─────────────────────────────────────────────
@@ -251,36 +256,41 @@ const stepStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 16,
     paddingHorizontal: 20,
   },
   dot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     borderWidth: 2,
-    borderColor: C.border,
-    backgroundColor: C.cardBg,
+    borderColor: '#C5D8F0',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   dotActive: {
-    borderColor: C.primary,
-    backgroundColor: 'rgba(0,255,204,0.15)',
+    borderColor: '#1A56DB',
+    backgroundColor: '#DCE8F8',
   },
   dotDone: {
-    borderColor: '#10b981',
-    backgroundColor: '#10b981',
+    borderColor: '#10B981',
+    backgroundColor: '#10B981',
   },
-  dotText: { fontSize: 11, fontWeight: '700', color: C.muted },
-  dotTextActive: { color: C.primary },
+  dotText: { fontSize: 11, fontWeight: '700', color: '#A0AEC0' },
+  dotTextActive: { color: '#1A56DB' },
   line: {
     flex: 1,
     height: 2,
-    backgroundColor: C.border,
-    marginHorizontal: 4,
+    backgroundColor: '#C5D8F0',
+    marginHorizontal: 6,
   },
-  lineDone: { backgroundColor: '#10b981' },
+  lineDone: { backgroundColor: '#10B981' },
 });
 
 export default function HospitalScreen() {
@@ -289,6 +299,7 @@ export default function HospitalScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const isDesktop = screenWidth >= 768;
   const avatarRef = useRef<SignLanguageAvatarRef>(null);
+  const insets = useSafeAreaInsets();
 
   // Flow step: 1 (Symptoms), 2 (Body Map & Pain Intensity), 3 (Medical Summary & 3-Mode Comm)
   const [step, setStep] = useState(1);
@@ -373,15 +384,13 @@ export default function HospitalScreen() {
   };
 
   const getPainLevelDesc = (val: number) => {
-    const level = PAIN_LEVELS.find((p) => p.level === val);
-    if (!level) return `${val}`;
-    let label = level.label;
+    let label = '';
     if (val === 0) label = t('pain_no_pain') || 'No Pain';
     else if (val <= 3) label = t('pain_mild') || 'Mild';
     else if (val <= 6) label = t('pain_moderate') || 'Moderate';
     else if (val <= 8) label = t('pain_severe') || 'Severe';
     else label = t('pain_worst') || 'Worst';
-    return `${level.emoji} ${label} (${val})`;
+    return `${label} (${val})`;
   };
 
   const getSymptomsSummary = () => {
@@ -511,9 +520,11 @@ export default function HospitalScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
         <TouchableOpacity
           style={styles.backBtn}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={() => {
             if (step > 1) {
               setStep(step - 1);
@@ -522,10 +533,10 @@ export default function HospitalScreen() {
             }
           }}
         >
-          <Text style={styles.backBtnText}>‹ {t('emergency_back') || 'Back'}</Text>
+          <Feather name="arrow-left" size={20} color={C.primary} />
         </TouchableOpacity>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>🏥 {t('home_hospital') || 'Hospital Mode'}</Text>
+          <Text style={styles.headerTitle}>{t('home_hospital') || 'Hospital Mode'}</Text>
           <Text style={styles.headerSub}>
             {step === 1 && (t('hospital_symptoms_title') || 'Step 1 — Select Symptoms')}
             {step === 2 && (t('hospital_pain_title') || 'Step 2 — Pain Locations & Intensity')}
@@ -539,7 +550,7 @@ export default function HospitalScreen() {
 
         {errorMsg && (
           <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>⚠ {errorMsg}</Text>
+            <Text style={styles.errorText}>{errorMsg}</Text>
           </View>
         )}
 
@@ -746,7 +757,7 @@ export default function HospitalScreen() {
               <View style={{ height: commMode === 'text_to_sign' ? undefined : 0, overflow: 'hidden' }}>
                 <View style={styles.card}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '700', color: C.text }}>🤟 {t('hospital_text_voice_to_sign') || 'Sign Language Avatar'}</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: C.text }}>{t('hospital_text_voice_to_sign') || 'Sign Language Avatar'}</Text>
                     <Text style={{ fontSize: 11, fontWeight: '700', color: '#10B981' }}>● {t('ready') || 'Ready'}</Text>
                   </View>
                   <SignLanguageAvatar
@@ -762,7 +773,7 @@ export default function HospitalScreen() {
             {/* ── Medical Consultation Summary Card ── */}
             <View style={styles.medicalCard}>
               <View style={styles.medicalHeader}>
-                <Text style={styles.medicalCardTitle}>🏥 {t('hospital_comm_title') || 'Medical Consultation Summary'}</Text>
+                <Text style={styles.medicalCardTitle}>{t('hospital_comm_title') || 'Medical Consultation Summary'}</Text>
                 <Text style={styles.medicalDate}>{new Date().toLocaleString()}</Text>
               </View>
 
@@ -835,637 +846,156 @@ export default function HospitalScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: C.bg,
-  },
+  safeArea: { flex: 1, backgroundColor: C.bg },
   header: {
-    backgroundColor: '#0f172d',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: Platform.OS === 'android' ? 44 : 20,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1.5,
-    borderColor: '#334155',
+    backgroundColor: C.cardBg, flexDirection: 'row', alignItems: 'center',
+    paddingBottom: 14, paddingHorizontal: 16,
+    borderBottomWidth: 1, borderBottomColor: '#E0ECF8',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 4,
   },
   backBtn: {
-    paddingRight: 12,
-    paddingVertical: 4,
+    width: 36, height: 36, borderRadius: 18, backgroundColor: C.iconBg,
+    alignItems: 'center', justifyContent: 'center', marginRight: 12, flexShrink: 0,
   },
-  backBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  headerTextContainer: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  headerSub: {
-    fontSize: 12,
-    color: C.primary,
-    marginTop: 2,
-  },
-  scrollContainer: {
-    paddingBottom: 50,
-  },
+  backBtnText: { color: C.primary, fontSize: 16, fontWeight: '600' },
+  headerTextContainer: { flex: 1 },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: C.text },
+  headerSub: { fontSize: 12, color: C.muted, marginTop: 2 },
+  scrollContainer: { paddingBottom: 50 },
   card: {
-    backgroundColor: C.cardBg,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.cardBg, marginHorizontal: 16, marginTop: 16, borderRadius: 20, padding: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: C.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 12,
-  },
-  symptomsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
-  },
-  symptomChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    backgroundColor: '#0f172a',
-  },
-  symptomChipActive: {
-    borderColor: C.primary,
-    backgroundColor: 'rgba(0, 255, 204, 0.15)',
-  },
-  symptomChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.muted,
-  },
-  symptomChipTextActive: {
-    color: C.primary,
-  },
-  otherInputContainer: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.text,
-    marginBottom: 8,
-  },
-  textInput: {
-    backgroundColor: '#0f172a',
-    borderColor: C.border,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: C.text,
-  },
-  multilineInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: C.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 },
+  symptomsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  symptomChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 20, borderWidth: 1.5, borderColor: C.border, backgroundColor: C.bg },
+  symptomChipActive: { borderColor: C.primary, backgroundColor: C.iconBg },
+  symptomChipText: { fontSize: 13, fontWeight: '600', color: C.muted },
+  symptomChipTextActive: { color: C.primary },
+  otherInputContainer: { marginBottom: 16 },
+  inputLabel: { fontSize: 13, fontWeight: '600', color: C.text, marginBottom: 8 },
+  textInput: { backgroundColor: C.bg, borderColor: C.border, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: C.text },
+  multilineInput: { minHeight: 80, textAlignVertical: 'top' },
   primaryButton: {
-    backgroundColor: C.primary,
-    paddingVertical: 14,
-    marginHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
+    backgroundColor: C.primary, paddingVertical: 14, marginHorizontal: 16, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', marginTop: 16,
+    shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
   },
-  primaryButtonText: {
-    color: '#0f172a',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  step2Container: {
-    flex: 1,
-  },
+  primaryButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  disabledButton: { opacity: 0.45, shadowOpacity: 0 },
+  step2Container: { flex: 1 },
   tabRow: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 10,
-    backgroundColor: '#1e293b',
-    borderWidth: 1,
-    borderColor: C.border,
-    overflow: 'hidden',
+    flexDirection: 'row', marginHorizontal: 16, marginTop: 16, borderRadius: 14,
+    backgroundColor: C.cardBg, borderWidth: 1.5, borderColor: C.border, overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
   },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabBtnActive: {
-    backgroundColor: 'rgba(0, 255, 204, 0.15)',
-  },
-  tabBtnText: {
-    color: C.muted,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tabBtnTextActive: {
-    color: C.primary,
-  },
+  tabBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  tabBtnActive: { backgroundColor: C.primary },
+  tabBtnText: { color: C.muted, fontSize: 14, fontWeight: '600' },
+  tabBtnTextActive: { color: '#fff', fontWeight: '700' },
   bodyMapCard: {
-    backgroundColor: C.cardBg,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.cardBg, marginHorizontal: 16, marginTop: 16, borderRadius: 20, padding: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
     alignItems: 'center',
   },
-  bodyMapHint: {
-    fontSize: 13,
-    color: C.muted,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  bodyMapContainer: {
-    width: '100%',
-    maxWidth: 300,
-    aspectRatio: 260 / 560,
-    position: 'relative',
-    alignSelf: 'center',
-  },
-  bodyImage: {
-    width: '100%',
-    height: '100%',
-  },
+  bodyMapHint: { fontSize: 13, color: C.muted, textAlign: 'center', marginBottom: 16 },
+  bodyMapContainer: { width: '100%', maxWidth: 300, aspectRatio: 260 / 560, position: 'relative', alignSelf: 'center' },
+  bodyImage: { width: '100%', height: '100%' },
   hotspot: {
-    position: 'absolute',
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 1.5,
-    borderColor: C.primary,
-    backgroundColor: 'rgba(0, 255, 204, 0.25)',
-    marginLeft: -11,
-    marginTop: -11,
-    zIndex: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: 'absolute', width: 22, height: 22, borderRadius: 11, borderWidth: 1.5,
+    borderColor: C.primary, backgroundColor: C.iconBg, marginLeft: -11, marginTop: -11,
+    zIndex: 10, justifyContent: 'center', alignItems: 'center',
   },
   hotspotSelected: {
-    borderColor: C.danger,
-    backgroundColor: C.danger,
-    shadowColor: C.danger,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
-    elevation: 6,
+    borderColor: C.danger, backgroundColor: C.danger,
+    shadowColor: C.danger, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.6, shadowRadius: 8, elevation: 6,
   },
-  hotspotPulse: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1.5,
-    borderColor: C.danger,
-    opacity: 0.7,
-  },
+  hotspotPulse: { position: 'absolute', width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderColor: C.danger, opacity: 0.6 },
   tooltipBox: {
-    position: 'absolute',
-    bottom: 26,
-    backgroundColor: '#0f172a',
-    borderColor: C.primary,
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    zIndex: 99,
-    width: 100,
-    alignItems: 'center',
+    position: 'absolute', bottom: 26, backgroundColor: C.text, borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 4, zIndex: 99, width: 100, alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 4, elevation: 3,
   },
-  tooltipText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  selectedPartsBox: {
-    width: '100%',
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderColor: C.border,
-  },
-  selectedHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  clearAllBtn: {
-    backgroundColor: '#3d1414',
-    borderColor: C.danger,
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  clearAllText: {
-    color: C.danger,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  emptyText: {
-    fontSize: 14,
-    color: C.muted,
-    fontStyle: 'italic',
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  partBadge: {
-    backgroundColor: '#0f172a',
-    borderColor: C.danger,
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  partBadgeText: {
-    color: C.text,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  painIntensityDisplay: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: C.primary,
-    marginBottom: 16,
-  },
-  painScaleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    gap: 4,
-    flexWrap: 'wrap',
-  },
-  painScaleBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: '#0f172a',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  painScaleText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: C.muted,
-  },
-  step3Container: {
-    flex: 1,
-  },
+  tooltipText: { color: '#fff', fontSize: 10, fontWeight: '700', textAlign: 'center' },
+  selectedPartsBox: { width: '100%', marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderColor: '#EFF5FC' },
+  selectedHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  clearAllBtn: { backgroundColor: C.danger + '12', borderColor: C.danger + '40', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+  clearAllText: { color: C.danger, fontSize: 11, fontWeight: '700' },
+  emptyText: { fontSize: 13, color: C.muted, fontStyle: 'italic' },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  partBadge: { backgroundColor: C.danger + '12', borderColor: C.danger + '40', borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
+  partBadgeText: { color: C.danger, fontSize: 12, fontWeight: '600' },
+  painIntensityDisplay: { fontSize: 17, fontWeight: '700', color: C.primary, marginBottom: 16 },
+  painScaleRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', gap: 4, flexWrap: 'wrap' },
+  painScaleBtn: { width: 32, height: 32, borderRadius: 8, borderWidth: 1.5, borderColor: C.border, backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' },
+  painScaleText: { fontSize: 13, fontWeight: '700', color: C.muted },
+  step3Container: { flex: 1 },
   medicalCard: {
-    backgroundColor: '#1e293b',
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 14,
-    padding: 20,
-    borderLeftWidth: 5,
-    borderLeftColor: C.primary,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.cardBg, marginHorizontal: 16, marginTop: 16, borderRadius: 20, padding: 20,
+    borderLeftWidth: 5, borderLeftColor: C.primary,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
-  medicalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  medicalCardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  medicalDate: {
-    fontSize: 12,
-    color: C.muted,
-  },
-  medicalDivider: {
-    height: 1,
-    backgroundColor: C.border,
-    marginBottom: 12,
-  },
-  medicalRow: {
-    marginBottom: 12,
-  },
-  medicalLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: C.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  medicalVal: {
-    fontSize: 14,
-    color: C.text,
-    lineHeight: 20,
-  },
-  boldTeal: {
-    fontWeight: '700',
-    color: C.primary,
-  },
-  avatarNoticeText: {
-    color: C.primary,
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  playerContainer: {
-    height: 320,
-    width: '100%',
-    borderRadius: 14,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  playerOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(11, 15, 25, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  avatarLoadingText: {
-    color: C.muted,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  threadContainer: {
-    gap: 8,
-  },
-  chatBubbleUser: {
-    backgroundColor: 'rgba(0, 255, 204, 0.15)',
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: C.primary,
-    borderRadius: 10,
-    padding: 10,
-    width: '100%',
-  },
-  chatBubbleText: {
-    color: C.text,
-    fontSize: 14,
-  },
-  chatBubbleTime: {
-    fontSize: 10,
-    color: C.muted,
-    marginTop: 4,
-    alignSelf: 'flex-end',
-  },
-  chatInputRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  chatTextInput: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-    borderColor: C.border,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: C.text,
-  },
-  chatSendBtn: {
-    backgroundColor: C.primary,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  chatSendBtnText: {
-    color: '#0f172a',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  errorBanner: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderColor: C.danger,
-    borderWidth: 1,
-    borderRadius: 8,
-    marginHorizontal: 16,
-    marginTop: 16,
-    padding: 12,
-  },
-  errorText: {
-    color: C.danger,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  // ── Step 3 Communication Mode Styles ─────────────────────────
-  commSectionTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: C.text,
-    marginHorizontal: 16,
-    marginTop: 20,
-    marginBottom: 12,
-  },
-  commCardsRow: {
-    flexDirection: 'column',
-    marginHorizontal: 16,
-    gap: 12,
-  },
-  commCardsRowDesktop: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-  },
+  medicalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  medicalCardTitle: { fontSize: 15, fontWeight: '700', color: C.text, flex: 1 },
+  medicalDate: { fontSize: 11, color: C.muted },
+  medicalDivider: { height: 1, backgroundColor: '#EFF5FC', marginBottom: 12 },
+  medicalRow: { marginBottom: 12 },
+  medicalLabel: { fontSize: 11, fontWeight: '700', color: C.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  medicalVal: { fontSize: 14, color: C.text, lineHeight: 20 },
+  boldTeal: { fontWeight: '700', color: C.primary },
+  avatarNoticeText: { color: C.primary, fontSize: 13, fontWeight: '600', marginBottom: 12 },
+  playerContainer: { height: 320, width: '100%', borderRadius: 14, overflow: 'hidden', position: 'relative' },
+  playerOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(232,242,255,0.80)', justifyContent: 'center', alignItems: 'center', gap: 8 },
+  avatarLoadingText: { color: C.muted, fontSize: 13, fontWeight: '500' },
+  threadContainer: { gap: 8 },
+  chatBubbleUser: { backgroundColor: C.iconBg, alignSelf: 'flex-start', borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 10, width: '100%' },
+  chatBubbleText: { color: C.text, fontSize: 14 },
+  chatBubbleTime: { fontSize: 10, color: C.muted, marginTop: 4, alignSelf: 'flex-end' },
+  chatInputRow: { flexDirection: 'row', gap: 8 },
+  chatTextInput: { flex: 1, backgroundColor: C.bg, borderColor: C.border, borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: C.text },
+  chatSendBtn: { backgroundColor: C.primary, borderRadius: 10, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  chatSendBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  errorBanner: { backgroundColor: '#FEF2F2', borderColor: C.danger + '40', borderWidth: 1, borderRadius: 12, marginHorizontal: 16, marginTop: 16, padding: 12, flexDirection: 'row', alignItems: 'center' },
+  errorText: { color: C.danger, fontSize: 13, fontWeight: '500', flex: 1 },
+  commSectionTitle: { fontSize: 15, fontWeight: '700', color: C.text, marginHorizontal: 16, marginTop: 20, marginBottom: 12 },
+  commCardsRow: { flexDirection: 'column', marginHorizontal: 16, gap: 12 },
+  commCardsRowDesktop: { flexDirection: 'row', alignItems: 'stretch' },
   commCard: {
-    flex: 1,
-    backgroundColor: C.cardBg,
-    borderRadius: 14,
-    padding: 18,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    alignItems: 'center',
-    gap: 8,
+    flex: 1, backgroundColor: C.cardBg, borderRadius: 18, padding: 18, borderWidth: 1.5, borderColor: C.border,
+    alignItems: 'center', gap: 8,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
   },
-  commCardActive: {
-    borderColor: C.primary,
-    backgroundColor: 'rgba(0, 255, 204, 0.08)',
-  },
-  commCardIcon: {
-    fontSize: 32,
-    marginBottom: 4,
-  },
-  commCardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: C.text,
-    textAlign: 'center',
-  },
-  commCardDesc: {
-    fontSize: 12,
-    color: C.muted,
-    textAlign: 'center',
-    lineHeight: 17,
-  },
+  commCardActive: { borderColor: C.primary, backgroundColor: C.iconBg },
+  commCardIcon: { fontSize: 32, marginBottom: 4 },
+  commCardTitle: { fontSize: 15, fontWeight: '700', color: C.text, textAlign: 'center' },
+  commCardDesc: { fontSize: 12, color: C.muted, textAlign: 'center', lineHeight: 17 },
   commPanel: {
-    backgroundColor: C.cardBg,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: C.border,
-    gap: 12,
+    backgroundColor: C.cardBg, marginHorizontal: 16, marginTop: 16, borderRadius: 18, padding: 16,
+    borderWidth: 1, borderColor: C.border, gap: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
   },
-  commPanelTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: C.text,
-    marginBottom: 4,
-  },
-  commPanelHint: {
-    fontSize: 13,
-    color: C.muted,
-    lineHeight: 18,
-  },
-  speakBtnRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-    marginTop: 4,
-  },
+  commPanelTitle: { fontSize: 16, fontWeight: '700', color: C.text, marginBottom: 4 },
+  commPanelHint: { fontSize: 13, color: C.muted, lineHeight: 18 },
+  speakBtnRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 4 },
   speakBtn: {
-    flex: 1,
-    backgroundColor: C.primary,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    minWidth: 90,
+    flex: 1, backgroundColor: C.primary, paddingVertical: 12, borderRadius: 12, alignItems: 'center', minWidth: 90,
+    shadowColor: C.primary, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 6, elevation: 3,
   },
-  speakBtnStop: {
-    backgroundColor: C.danger,
-  },
-  speakBtnDisabled: {
-    opacity: 0.4,
-  },
-  speakBtnText: {
-    color: '#0f172a',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  cameraContainer: {
-    height: 260,
-    borderRadius: 14,
-    overflow: 'hidden',
-    position: 'relative',
-    backgroundColor: '#000',
-  },
-  recognizingBadge: {
-    position: 'absolute',
-    bottom: 12,
-    left: 12,
-    right: 12,
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    padding: 10,
-    borderRadius: 10,
-  },
-  recognizingText: {
-    color: C.primary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  recognizedBox: {
-    backgroundColor: '#0f172a',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    gap: 4,
-  },
-  recognizedLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: C.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  recognizedText: {
-    fontSize: 15,
-    color: C.text,
-    lineHeight: 22,
-    fontStyle: 'italic',
-  },
-  speakToDocBtn: {
-    marginHorizontal: 0,
-    marginTop: 4,
-  },
-  signLimitationNote: {
-    fontSize: 11,
-    color: '#64748b',
-    fontStyle: 'italic',
-    lineHeight: 16,
-    marginTop: 4,
-  },
-  avatarContainer: {
-    height: 320,
-    width: '100%',
-    borderRadius: 14,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  inputModeLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.text,
-    marginTop: 4,
-  },
-  voiceInputBtn: {
-    backgroundColor: '#1e293b',
-    borderWidth: 1.5,
-    borderColor: C.border,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  voiceInputBtnActive: {
-    borderColor: C.primary,
-    backgroundColor: 'rgba(0,255,204,0.1)',
-  },
-  voiceInputBtnText: {
-    color: C.text,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  hospital_notes_label: {
-    fontSize: 11,
-    color: C.muted,
-  },
+  speakBtnStop: { backgroundColor: C.danger, shadowColor: C.danger },
+  speakBtnDisabled: { opacity: 0.4, shadowOpacity: 0 },
+  speakBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  cameraContainer: { height: 260, borderRadius: 14, overflow: 'hidden', position: 'relative', backgroundColor: '#000' },
+  recognizingBadge: { position: 'absolute', bottom: 12, left: 12, right: 12, flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.92)', padding: 10, borderRadius: 10 },
+  recognizingText: { color: C.primary, fontSize: 13, fontWeight: '600' },
+  recognizedBox: { backgroundColor: C.bg, borderRadius: 12, padding: 12, borderWidth: 1.5, borderColor: C.border, gap: 4 },
+  recognizedLabel: { fontSize: 11, fontWeight: '700', color: C.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  recognizedText: { fontSize: 15, color: C.text, lineHeight: 22, fontStyle: 'italic' },
+  speakToDocBtn: { marginHorizontal: 0, marginTop: 4 },
+  signLimitationNote: { fontSize: 11, color: C.muted, fontStyle: 'italic', lineHeight: 16, marginTop: 4 },
+  avatarContainer: { height: 320, width: '100%', borderRadius: 14, overflow: 'hidden', position: 'relative' },
+  inputModeLabel: { fontSize: 13, fontWeight: '600', color: C.text, marginTop: 4 },
+  voiceInputBtn: { backgroundColor: C.bg, borderWidth: 1.5, borderColor: C.border, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  voiceInputBtnActive: { borderColor: C.primary, backgroundColor: C.iconBg },
+  voiceInputBtnText: { color: C.text, fontSize: 15, fontWeight: '600' },
+  hospital_notes_label: { fontSize: 11, color: C.muted },
 });
