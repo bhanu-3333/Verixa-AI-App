@@ -26,17 +26,20 @@ import { CommunicationModeSelector, CommunicationMode } from '../../components/c
 import { SpeakReportPanel } from '../../components/communication/SpeakReportPanel';
 import { SignToTextVoicePanel } from '../../components/communication/SignToTextVoicePanel';
 import { TextVoiceToSignPanel } from '../../components/communication/TextVoiceToSignPanel';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const C = {
-  primary: '#208AEF',
-  accent: '#00D2FF',
-  bg: '#0B0F19',
-  cardBg: '#151D30',
-  text: '#F1F5F9',
-  muted: '#94A3B8',
-  danger: '#EF4444',
-  success: '#10B981',
-  border: '#1E293B',
+  primary:  '#1A56DB',
+  accent:   '#1A56DB',
+  bg:       '#E8F2FF',
+  cardBg:   '#FFFFFF',
+  text:     '#0C1E3C',
+  muted:    '#6B7A8D',
+  danger:   '#EF4444',
+  success:  '#10B981',
+  border:   '#C5D8F0',
+  iconBg:   '#DCE8F8',
 };
 
 // Step progress indicator
@@ -75,43 +78,49 @@ const stepStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 20,
   },
   dot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     borderWidth: 2,
-    borderColor: C.border,
-    backgroundColor: C.cardBg,
+    borderColor: '#C5D8F0',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
   },
   dotActive: {
-    borderColor: C.primary,
-    backgroundColor: 'rgba(32, 138, 239, 0.15)',
+    borderColor: '#1A56DB',
+    backgroundColor: '#DCE8F8',
   },
   dotDone: {
-    borderColor: C.success,
-    backgroundColor: C.success,
+    borderColor: '#10B981',
+    backgroundColor: '#10B981',
   },
-  dotText: { fontSize: 13, fontWeight: '700', color: C.muted },
-  dotTextActive: { color: C.primary },
+  dotText: { fontSize: 13, fontWeight: '700', color: '#A0AEC0' },
+  dotTextActive: { color: '#1A56DB' },
   line: {
     flex: 0.2,
     width: 30,
     height: 2,
-    backgroundColor: C.border,
+    backgroundColor: '#C5D8F0',
     marginHorizontal: 8,
   },
-  lineDone: { backgroundColor: C.success },
+  lineDone: { backgroundColor: '#10B981' },
 });
 
 export default function BankScreen() {
   const avatarRef = useRef<SignLanguageAvatarRef>(null);
   const { width: screenWidth } = useWindowDimensions();
   const { language, t } = useLanguage();
+  const insets = useSafeAreaInsets();
 
   // Flow step state: 1 (Select Service), 2 (Summary Card), 3 (Form), 4 (AI Chat & Avatar), 5 (Success Screen)
   const [step, setStep] = useState(1);
@@ -170,9 +179,9 @@ export default function BankScreen() {
 
   // Step 1 Options
   const SERVICES = useMemo(() => [
-    { id: 'Create Account', label: t('bank_service_create_account') || 'Create New Account', icon: '📝' },
-    { id: 'Fund Transfer', label: t('bank_service_fund_transfer') || 'Fund Transfer', icon: '💸' },
-    { id: 'Block ATM', label: t('bank_service_block_atm') || 'Block ATM Card', icon: '💳' },
+    { id: 'Create Account', label: t('bank_service_create_account') || 'Create New Account', icon: 'account-plus-outline' },
+    { id: 'Fund Transfer',  label: t('bank_service_fund_transfer')  || 'Fund Transfer',       icon: 'bank-transfer' },
+    { id: 'Block ATM',      label: t('bank_service_block_atm')      || 'Block ATM Card',       icon: 'credit-card-remove-outline' },
   ], [language, t]);
 
   // ── Sensitive-field masking helpers ────────────────────────────────────────
@@ -609,9 +618,11 @@ export default function BankScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
         <TouchableOpacity
           style={styles.backBtn}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={() => {
             if (step > 1 && step < 5) {
               setStep(step - 1);
@@ -620,10 +631,10 @@ export default function BankScreen() {
             }
           }}
         >
-          <Text style={styles.backBtnText}>‹ {isTamil ? 'முந்தைய' : 'Back'}</Text>
+          <Feather name="arrow-left" size={20} color={C.primary} />
         </TouchableOpacity>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.headerTitle}>🏦 {isTamil ? t('bank_title') : 'Bank Mode'}</Text>
+          <Text style={styles.headerTitle}>{isTamil ? t('bank_title') : 'Bank Mode'}</Text>
           <Text style={styles.headerSub}>
             {step === 1 && (isTamil ? t('bank_step1_subtitle') : 'Step 1 — Select banking service')}
             {step === 2 && (isTamil ? t('bank_step2_subtitle') : 'Step 2 — Service details summary')}
@@ -658,8 +669,16 @@ export default function BankScreen() {
                   onPress={() => setSelectedService(srv.id)}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.gridCardIcon}>{srv.icon}</Text>
-                  <Text style={styles.gridCardLabel}>{srv.label}</Text>
+                  <View style={styles.gridCardIconWrap}>
+                    <MaterialCommunityIcons
+                      name={srv.icon as any}
+                      size={30}
+                      color={selectedService === srv.id ? C.primary : C.muted}
+                    />
+                  </View>
+                  <Text style={[styles.gridCardLabel, selectedService === srv.id && { color: C.primary }]}>
+                    {srv.label}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -830,7 +849,7 @@ export default function BankScreen() {
               activeOpacity={0.8}
             >
               <Text style={styles.primaryButtonText}>
-                ✅ {isTamil ? 'வங்கி சேவையை முடிக்கவும்' : 'Complete Banking Service'}
+                {isTamil ? 'வங்கி சேவையை முடிக்கவும்' : 'Complete Banking Service'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -842,7 +861,9 @@ export default function BankScreen() {
         {/* STEP 5: Success Completed Screen */}
         {step === 5 && (
           <View style={styles.successContainer}>
-            <Text style={styles.successIcon}>🎉</Text>
+            <View style={styles.successIconCircle}>
+              <MaterialCommunityIcons name="check-circle" size={56} color={C.success} />
+            </View>
             <Text style={styles.successTitle}>{isTamil ? t('bank_success_title') : 'Service Completed Successfully'}</Text>
             <Text style={styles.successSubtitle}>
               {isTamil ? t('bank_success_subtitle') : 'Your banking session records have been successfully submitted and stored inside MongoDB.'}
@@ -857,495 +878,173 @@ export default function BankScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: C.bg,
-  },
+  safeArea: { flex: 1, backgroundColor: C.bg },
   header: {
-    backgroundColor: '#0F172A',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: Platform.OS === 'android' ? 44 : 20,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.cardBg, flexDirection: 'row', alignItems: 'center',
+    paddingBottom: 14, paddingHorizontal: 16,
+    borderBottomWidth: 1, borderBottomColor: '#E0ECF8',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 4,
   },
   backBtn: {
-    paddingRight: 12,
-    paddingVertical: 4,
+    width: 36, height: 36, borderRadius: 18, backgroundColor: C.iconBg,
+    alignItems: 'center', justifyContent: 'center', marginRight: 12, flexShrink: 0,
   },
-  backBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  headerTextContainer: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  headerSub: {
-    fontSize: 12,
-    color: C.accent,
-    marginTop: 2,
-  },
-  scrollContainer: {
-    paddingBottom: 60,
-  },
+  backBtnText: { color: C.primary, fontSize: 16, fontWeight: '600' },
+  headerTextContainer: { flex: 1 },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: C.text },
+  headerSub: { fontSize: 12, color: C.muted, marginTop: 2 },
+  scrollContainer: { paddingBottom: 60 },
   card: {
-    backgroundColor: C.cardBg,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 14,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.cardBg, marginHorizontal: 16, marginTop: 16,
+    borderRadius: 20, padding: 20,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: C.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 16,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 20,
-  },
+  sectionTitle: { fontSize: 14, fontWeight: '700', color: C.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 16 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
   gridCard: {
-    flex: 1,
-    minWidth: 120,
-    backgroundColor: '#0F172A',
-    borderColor: C.border,
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    flex: 1, minWidth: 110, backgroundColor: C.bg,
+    borderColor: C.border, borderWidth: 1.5, borderRadius: 16,
+    paddingVertical: 20, paddingHorizontal: 14,
+    alignItems: 'center', justifyContent: 'center', gap: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
   },
-  gridCardActive: {
-    borderColor: C.primary,
-    backgroundColor: 'rgba(32, 138, 239, 0.12)',
+  gridCardActive: { borderColor: C.primary, backgroundColor: C.iconBg },
+  gridCardIcon: { fontSize: 32 },
+  gridCardIconWrap: {
+    width: 54, height: 54, borderRadius: 27,
+    backgroundColor: C.iconBg, alignItems: 'center', justifyContent: 'center',
   },
-  gridCardIcon: {
-    fontSize: 32,
-  },
-  gridCardLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: C.text,
-    textAlign: 'center',
-  },
+  gridCardLabel: { fontSize: 13, fontWeight: '600', color: C.text, textAlign: 'center' },
   summaryCard: {
-    backgroundColor: '#0B0F19',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 16,
-    marginBottom: 20,
-    gap: 12,
+    backgroundColor: C.bg, borderRadius: 14, borderWidth: 1.5,
+    borderColor: C.border, padding: 16, marginBottom: 20, gap: 12,
   },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: C.muted,
-    fontWeight: '600',
-    width: '40%',
-  },
-  summaryValue: {
-    fontSize: 14,
-    color: C.text,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'right',
-  },
-  statusValue: {
-    color: '#E5C158',
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: C.border,
-  },
-  formContainer: {
-    gap: 12,
-    marginBottom: 20,
-  },
-  formLabel: {
-    fontSize: 14,
-    color: C.text,
-    fontWeight: '600',
-  },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  summaryLabel: { fontSize: 14, color: C.muted, fontWeight: '600', width: '40%' },
+  summaryValue: { fontSize: 14, color: C.text, fontWeight: '600', flex: 1, textAlign: 'right' },
+  statusValue: { color: '#D97706' },
+  summaryDivider: { height: 1, backgroundColor: C.border },
+  formContainer: { gap: 12, marginBottom: 20 },
+  formLabel: { fontSize: 14, color: C.text, fontWeight: '600' },
   textInput: {
-    backgroundColor: '#0F172A',
-    borderColor: C.border,
-    borderWidth: 1.5,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: C.text,
+    backgroundColor: C.bg, borderColor: C.border, borderWidth: 1.5,
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 15, color: C.text,
   },
   primaryButton: {
-    backgroundColor: C.primary,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: C.primary, paddingVertical: 14, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
   },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  disabledButton: {
-    opacity: 0.4,
-  },
-  chatSection: {
-    flex: 1,
-  },
+  primaryButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  disabledButton: { opacity: 0.4, shadowOpacity: 0 },
+  chatSection: { flex: 1 },
   avatarCard: {
-    backgroundColor: C.cardBg,
-    marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: C.border,
-    overflow: 'hidden',
+    backgroundColor: C.cardBg, marginHorizontal: 16, marginTop: 16,
+    borderRadius: 18, borderWidth: 1, borderColor: C.border, overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
   },
   avatarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#0F172A',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderColor: C.border,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: C.bg, paddingVertical: 12, paddingHorizontal: 16,
+    borderBottomWidth: 1, borderColor: C.border,
   },
-  avatarTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: C.text,
-  },
-  closeBtn: {
-    color: C.muted,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  chatHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  chatButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  toggleBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#0F172A',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  toggleBtnText: {
-    color: C.accent,
-    fontSize: 11,
-    fontWeight: '600',
-  },
+  avatarTitle: { fontSize: 13, fontWeight: '700', color: C.text },
+  closeBtn: { color: C.muted, fontSize: 13, fontWeight: '500' },
+  chatHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  chatButtons: { flexDirection: 'row', gap: 8 },
+  toggleBtn: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: C.bg, borderRadius: 8, borderWidth: 1.5, borderColor: C.border },
+  toggleBtnText: { color: C.primary, fontSize: 11, fontWeight: '600' },
   chatList: {
-    minHeight: 200,
-    backgroundColor: '#0B0F19',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    marginBottom: 16,
+    minHeight: 200, backgroundColor: C.bg, borderRadius: 14,
+    padding: 16, gap: 12, marginBottom: 16,
+    borderWidth: 1, borderColor: C.border,
   },
-  chatBubble: {
-    maxWidth: '85%',
-    padding: 12,
-    borderRadius: 10,
-  },
-  chatBubbleUser: {
-    backgroundColor: C.primary,
-    alignSelf: 'flex-end',
-  },
-  chatBubbleAssistant: {
-    backgroundColor: '#1E293B',
-    alignSelf: 'flex-start',
-  },
-  chatBubbleText: {
-    color: '#fff',
-    fontSize: 14,
-    lineHeight: 19,
-  },
-  chatBubbleTime: {
-    fontSize: 10,
-    color: 'rgba(255, 255, 255, 0.5)',
-    alignSelf: 'flex-end',
-    marginTop: 4,
-  },
-  loadingBubble: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-  },
-  composer: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
+  chatBubble: { maxWidth: '85%', padding: 12, borderRadius: 12 },
+  chatBubbleUser: { backgroundColor: C.primary, alignSelf: 'flex-end' },
+  chatBubbleAssistant: { backgroundColor: C.iconBg, alignSelf: 'flex-start' },
+  chatBubbleText: { color: '#fff', fontSize: 14, lineHeight: 19 },
+  chatBubbleTime: { fontSize: 10, color: 'rgba(255,255,255,0.55)', alignSelf: 'flex-end', marginTop: 4 },
+  loadingBubble: { alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
+  composer: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 16 },
   chatInput: {
-    flex: 1,
-    backgroundColor: '#0B0F19',
-    borderColor: C.border,
-    borderWidth: 1.5,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: C.text,
+    flex: 1, backgroundColor: C.bg, borderColor: C.border, borderWidth: 1.5,
+    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 15, color: C.text,
   },
   iconBtn: {
-    width: 44,
-    height: 44,
-    backgroundColor: '#1E293B',
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
+    width: 44, height: 44, backgroundColor: C.iconBg, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: C.border,
   },
-  listeningBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.25)',
-    borderColor: C.danger,
-  },
-  btnIconText: {
-    fontSize: 20,
-  },
+  listeningBtn: { backgroundColor: '#FEF2F2', borderColor: C.danger },
+  btnIconText: { fontSize: 20 },
   sendBtn: {
-    backgroundColor: C.accent,
-    paddingHorizontal: 16,
-    height: 44,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: C.primary, paddingHorizontal: 16, height: 44,
+    borderRadius: 10, alignItems: 'center', justifyContent: 'center',
   },
-  sendBtnDisabled: {
-    opacity: 0.4,
-  },
-  sendBtnText: {
-    color: '#0F172A',
-    fontWeight: '700',
-    fontSize: 14,
-  },
+  sendBtnDisabled: { opacity: 0.4 },
+  sendBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   completeBtn: {
-    backgroundColor: C.success,
-    marginTop: 8,
+    backgroundColor: C.success, marginTop: 8,
+    shadowColor: C.success, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 6, elevation: 3,
   },
-  successContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 30,
-    marginTop: 60,
-    gap: 16,
+  successContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30, marginTop: 60, gap: 16 },
+  successIconCircle: {
+    width: 96, height: 96, borderRadius: 48,
+    backgroundColor: C.success + '18',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: C.success + '40',
   },
-  successIcon: {
-    fontSize: 64,
-  },
-  successTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#fff',
-    textAlign: 'center',
-  },
-  successSubtitle: {
-    fontSize: 14,
-    color: C.muted,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  redirectSpinner: {
-    marginTop: 20,
-  },
-  redirectText: {
-    fontSize: 12,
-    color: C.muted,
-  },
+  successIcon: { fontSize: 64 },
+  successTitle: { fontSize: 22, fontWeight: '700', color: C.text, textAlign: 'center' },
+  successSubtitle: { fontSize: 14, color: C.muted, textAlign: 'center', lineHeight: 20 },
+  redirectSpinner: { marginTop: 20 },
+  redirectText: { fontSize: 12, color: C.muted },
   errorBanner: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderColor: C.danger,
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    marginHorizontal: 16,
-    marginTop: 16,
+    backgroundColor: '#FEF2F2', borderColor: C.danger + '40', borderWidth: 1,
+    borderRadius: 12, padding: 12, marginHorizontal: 16, marginTop: 16,
+    flexDirection: 'row', alignItems: 'center',
   },
-  errorText: {
-    color: C.danger,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  cameraBox: {
-    height: 240,
-    width: '100%',
-    backgroundColor: '#000',
-  },
+  errorText: { color: C.danger, fontSize: 13, fontWeight: '500', flex: 1 },
+  cameraBox: { height: 240, width: '100%', backgroundColor: '#000' },
   cameraRow: {
-    flexDirection: 'row',
-    backgroundColor: '#0F172A',
-    borderBottomWidth: 1,
-    borderColor: C.border,
+    flexDirection: 'row', backgroundColor: C.bg,
+    borderBottomWidth: 1, borderColor: C.border,
   },
-  modeBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modeBtnActive: {
-    backgroundColor: 'rgba(0, 210, 255, 0.15)',
-    borderBottomWidth: 2,
-    borderColor: C.accent,
-  },
-  modeBtnText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  trackingStatus: {
-    backgroundColor: '#0F172A',
-    padding: 14,
-    gap: 8,
-  },
-  trackingTitle: {
-    fontSize: 11,
-    color: C.muted,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  trackingWord: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: C.accent,
-  },
-  supportedHint: {
-    fontSize: 10,
-    color: C.muted,
-  },
-  btnRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  modeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' },
+  modeBtnActive: { backgroundColor: C.iconBg, borderBottomWidth: 2, borderColor: C.primary },
+  modeBtnText: { color: C.text, fontSize: 12, fontWeight: '600' },
+  trackingStatus: { backgroundColor: C.bg, padding: 14, gap: 8 },
+  trackingTitle: { fontSize: 11, color: C.muted, fontWeight: '700', textTransform: 'uppercase' },
+  trackingWord: { fontSize: 16, fontWeight: '700', color: C.primary },
+  supportedHint: { fontSize: 10, color: C.muted },
+  btnRow: { flexDirection: 'row', gap: 8 },
   actionMinBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    backgroundColor: '#1E293B',
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flex: 1, paddingVertical: 8, backgroundColor: C.iconBg,
+    borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: C.border,
   },
-  actionMinBtnSubmit: {
-    backgroundColor: C.accent,
-  },
-  actionMinBtnText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  // ── Bank Service Report Card Styles ──────────────────────────────────────
-  avatarReadyBadge: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#10B981',
-  },
+  actionMinBtnSubmit: { backgroundColor: C.primary, borderColor: C.primary },
+  actionMinBtnText: { color: C.text, fontSize: 12, fontWeight: '600' },
+  // ── Bank Service Report Card ──────────────────────────────────────────────
+  avatarReadyBadge: { fontSize: 11, fontWeight: '700', color: C.success },
   reportCard: {
-    backgroundColor: '#151D30',
-    borderRadius: 14,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#1E293B',
+    backgroundColor: C.cardBg, borderRadius: 20, padding: 20, marginBottom: 16,
+    borderLeftWidth: 5, borderLeftColor: C.primary,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
-  reportHeader: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    gap: 12,
-    marginBottom: 12,
-  },
-  reportHeaderIcon: {
-    fontSize: 28,
-  },
-  reportTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#F1F5F9',
-  },
-  reportDate: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  reportDivider: {
-    height: 1,
-    backgroundColor: '#1E293B',
-    marginBottom: 12,
-  },
-  reportRow: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'flex-start' as const,
-    paddingVertical: 8,
-  },
-  reportLabel: {
-    fontSize: 13,
-    color: '#94A3B8',
-    fontWeight: '500',
-    flex: 0.4,
-  },
-  reportValue: {
-    fontSize: 14,
-    color: '#F1F5F9',
-    fontWeight: '600',
-    flex: 0.6,
-    textAlign: 'right' as const,
-  },
-  reportValueHighlight: {
-    color: '#10B981',
-  },
-  reportRowDivider: {
-    height: 1,
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-  },
+  reportHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, marginBottom: 12 },
+  reportHeaderIcon: { fontSize: 28 },
+  reportTitle: { fontSize: 18, fontWeight: '700', color: C.text },
+  reportDate: { fontSize: 11, color: C.muted, marginTop: 2 },
+  reportDivider: { height: 1, backgroundColor: '#EFF5FC', marginBottom: 12 },
+  reportRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, alignItems: 'flex-start' as const, paddingVertical: 8 },
+  reportLabel: { fontSize: 13, color: C.muted, fontWeight: '500', flex: 0.4 },
+  reportValue: { fontSize: 14, color: C.text, fontWeight: '600', flex: 0.6, textAlign: 'right' as const },
+  reportValueHighlight: { color: C.success },
+  reportRowDivider: { height: 1, backgroundColor: '#EFF5FC' },
   reportSecurityNote: {
-    marginTop: 14,
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
-    borderRadius: 8,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.2)',
+    marginTop: 14, backgroundColor: C.success + '12', borderRadius: 10,
+    padding: 10, borderWidth: 1, borderColor: C.success + '30',
   },
-  reportSecurityText: {
-    fontSize: 11,
-    color: '#10B981',
-    fontWeight: '500',
-    lineHeight: 16,
-  },
+  reportSecurityText: { fontSize: 11, color: C.success, fontWeight: '500', lineHeight: 16 },
 });
