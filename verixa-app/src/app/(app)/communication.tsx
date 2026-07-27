@@ -99,12 +99,25 @@ export default function CommunicationScreen() {
   const toggleListening = () => {
     if (isListening) { stopListening(); return; }
 
+    if (Platform.OS !== 'web') {
+      setErrorMsg(
+        language === 'ta'
+          ? 'குரல் உள்ளீடு தற்போது கிடைக்கவில்லை. உங்கள் செய்தியை தட்டச்சு செய்யவும்.'
+          : 'Voice input unavailable. Please type your message.'
+      );
+      return;
+    }
+
     const SpeechRecognition =
       typeof window !== 'undefined' &&
       ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
     if (!SpeechRecognition) {
-      setErrorMsg('Voice input is not supported in this browser. Please use Chrome or Edge.');
+      setErrorMsg(
+        language === 'ta'
+          ? 'குரல் உள்ளீடு இந்த உலாவியில் ஆதரிக்கப்படவில்லை.'
+          : 'Voice input is not supported in this browser.'
+      );
       return;
     }
 
