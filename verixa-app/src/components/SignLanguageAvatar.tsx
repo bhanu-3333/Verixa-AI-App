@@ -88,6 +88,7 @@ export const SignLanguageAvatar = forwardRef<SignLanguageAvatarRef, SignLanguage
 
     useImperativeHandle(ref, () => ({
       play: (sigml: string) => {
+        console.log('[DEBUG] Avatar Started');
         if (readyStateRef.current === 'ready' || readyStateRef.current === 'playing') {
           postToWebGL(JSON.stringify({ action: 'play', sigml }));
           setReadyState('playing');

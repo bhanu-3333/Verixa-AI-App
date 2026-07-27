@@ -20,6 +20,7 @@ class SpeechService {
       }
 
       this.isSpeakingState = true;
+      console.log('[DEBUG] Voice Started');
       Speech.speak(text, {
         language,
         onDone: () => {
