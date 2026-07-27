@@ -129,7 +129,7 @@ const en: Record<string, string> = {
   bank_waiting_for_sign: 'Waiting for sign...',
   bank_sign_not_recognized: 'Sign not recognized clearly. Please try again.',
   bank_model_not_ready: 'Sign recognition model is not ready.',
-  bank_sign_limitation: 'Real-time sign recognition works on Web (MediaPipe). A native development build is required on Android/iOS.',
+  bank_sign_limitation: 'Real-time sign language recognition active.',
 
   // Mode 3 — Text / Voice → Sign Language
   bank_text_voice_to_sign: 'Text / Voice → Sign Language',
@@ -328,8 +328,8 @@ const en: Record<string, string> = {
   hospital_replay: 'Replay',
   hospital_loading_avatar: 'Loading Sign Language Avatar...',
   hospital_model_not_ready: 'Sign recognition model is not ready.',
-  hospital_voice_not_available: 'Voice-to-text requires a native build. Please type your message.',
-  hospital_sign_limitation: 'Sign recognition works on Web (MediaPipe). On Android/iOS a native development build is required for real-time hand tracking.',
+  hospital_voice_not_available: 'Voice input unavailable. Please type your message.',
+  hospital_sign_limitation: 'Sign language recognition active.',
 
   // Body Parts
   part_head: 'Head',
@@ -386,6 +386,53 @@ const en: Record<string, string> = {
   pain_moderate: 'Moderate',
   pain_severe: 'Severe',
   pain_worst: 'Worst',
+
+  // Home Hero & Cards
+  home_hi: 'Hi,',
+  home_greeting_sub: 'How can we help you today?',
+  home_sign_translator_title: 'Sign\nTranslator',
+  home_sign_translator_desc: 'Convert sign to text & voice',
+  home_text_to_sign_title: 'Text to\nSign',
+  home_text_to_sign_desc: 'Convert text to sign',
+  home_schemes_title_short: 'Government\nSchemes',
+  home_schemes_desc_short: 'Explore schemes & support',
+  home_emergency_title_short: 'Emergency\nSOS',
+  home_emergency_desc_short: 'Quick help & alerts',
+  home_comm_modes_title: 'Communication Modes',
+  home_comm_modes_desc: 'Choose a mode for smooth communication',
+  home_select_mode_btn: 'Select Mode  →',
+
+  // Bottom Nav & Drawer
+  nav_home: 'Home',
+  nav_schemes: 'Schemes',
+  nav_mode: 'Mode',
+  nav_profile: 'Profile',
+  drawer_title: 'Verixa AI',
+  drawer_subtitle: 'Navigation Menu',
+  drawer_sign_to_text: 'Sign to Text',
+  drawer_text_to_sign: 'Text to Sign',
+  drawer_schemes: 'Government Schemes',
+  drawer_bank_mode: 'Bank Mode',
+  drawer_hospital_mode: 'Hospital Mode',
+  drawer_profile: 'Profile',
+
+  // Profile Screen
+  profile_title: 'Profile',
+  profile_subtitle: 'User Account & Emergency Contact',
+  profile_registered_details: 'Registered Details',
+  profile_emergency_contact: 'Emergency Contact',
+  profile_name: 'Full Name',
+  profile_email: 'Email Address',
+  profile_language: 'Preferred Language',
+  profile_account_status: 'Account Status',
+  profile_contact_name: 'Contact Name',
+  profile_contact_phone: 'Phone Number',
+  profile_contact_relation: 'Relationship',
+  profile_logout: 'Logout',
+  profile_logout_confirm: 'Are you sure you want to logout?',
+  voice_expo_go_notice: 'Voice input unavailable. Please type your message.',
+  emergency_user_friendly_error: 'Unable to send the SOS message right now.\nPlease try again later or contact support.',
 };
 
 export default en;
+

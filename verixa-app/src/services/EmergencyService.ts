@@ -100,6 +100,7 @@ export async function sendSOS(
     };
   } catch (error) {
     if (axios.isAxiosError(error)) {
+      console.error('[EmergencyService API Error Details]', error.response?.status, error.response?.data || error.message);
       if (error.response?.status === 401) {
         console.warn('[EmergencyService] 401 — Unauthorized. Clearing storage.');
         await clearAuth();
@@ -128,6 +129,7 @@ export async function sendSOS(
         },
       };
     }
+    console.error('[EmergencyService Exception Details]', error);
     throw error;
   }
 }

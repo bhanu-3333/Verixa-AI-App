@@ -96,11 +96,19 @@ export const SignService = {
       const headers = await getHeaders();
       const res = await API.post('/predict', { sequence }, { headers });
       if (res.data && res.data.status === 'success') {
-        return res.data.data as PredictResponse;
+        const data = res.data.data as PredictResponse;
+        console.log('[DEBUG] Model prediction:', data.phrase, '| Confidence score:', data.confidence);
+        return data;
       }
       throw new Error(res.data?.message || 'Prediction failed.');
     } catch (error) {
-      return handleAxiosError(error);
+      console.warn('[SignService] Prediction request failed:', error);
+      return {
+        phrase: null,
+        confidence: 0,
+        accepted: false,
+        message: 'Prediction service unavailable',
+      };
     }
   },
 
