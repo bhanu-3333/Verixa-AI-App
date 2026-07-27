@@ -19,6 +19,7 @@ import { startBankSession, sendBankMessage, completeBankSession, ChatMessage } f
 import { getUser } from '../../utils/storage';
 import { SupportedLanguage } from '../../services/LanguageService';
 import { useLanguage } from '../../components/LanguageProvider';
+
 import SignToTextDetector from '../../components/SignToTextDetector';
 import { recognizeAlphabet, getWordSuggestion } from '../../services/AlphabetRecognizer';
 import { recognizeGesture, getSupportedGestures, type GestureResult } from '../../services/GestureRecognizer';
@@ -496,27 +497,29 @@ export default function BankScreen() {
   // Voice input for Text/Voice → Sign panel (Browser STT)
   const handleVoiceInput = useCallback(() => {
     if (isListening) { setIsListening(false); return; }
-    if (Platform.OS === 'web' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    if (Platform.OS === 'web' && (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window))) {
       const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const rec = new SR();
       rec.lang = isTamil ? 'ta-IN' : 'en-US';
       rec.interimResults = false;
       rec.maxAlternatives = 1;
-      rec.onstart = () => setIsListening(true);
+      rec.onstart = () => {
+        console.log('[DEBUG] Voice recognition initialized');
+        setIsListening(true);
+      };
       rec.onend = () => setIsListening(false);
       rec.onerror = () => setIsListening(false);
       rec.onresult = (event: any) => {
-        const spoken = event.results[0][0].transcript;
+        const spoken = event.results[0]?.[0]?.transcript;
         if (spoken) setStaffInput(spoken);
       };
       rec.start();
     } else {
-      // Native fallback
-      setIsListening(true);
-      setTimeout(() => {
-        setIsListening(false);
-        setStaffInput(isTamil ? 'வணக்கம், உங்கள் சேவை தொடர்கிறது' : 'Hello, your service is being processed');
-      }, 1500);
+      setErrorMsg(
+        isTamil
+          ? 'குரல் உள்ளீடு தற்போது கிடைக்கவில்லை. உங்கள் செய்தியை தட்டச்சு செய்யவும்.'
+          : 'Voice input unavailable. Please type your message.'
+      );
     }
   }, [isListening, isTamil]);
 
@@ -751,9 +754,9 @@ export default function BankScreen() {
         {/* STEP 4: Bank Service Report + 3 Communication Options */}
         {step === 4 && (
           <View style={styles.chatSection}>
-            {/* ── Background-preloaded avatar (hidden until Option 3 selected) ── */}
+            {/* ── Background-preloaded avatar (visible for text_to_sign & sign_to_text) ── */}
             {avatarMounted && (
-              <View style={{ height: bankCommMode === 'text_to_sign' ? undefined : 0, overflow: 'hidden' }}>
+              <View style={{ height: (bankCommMode === 'text_to_sign' || bankCommMode === 'sign_to_text') ? undefined : 0, overflow: 'hidden' }}>
                 <View style={styles.avatarCard}>
                   <View style={styles.avatarHeader}>
                     <Text style={styles.avatarTitle}>🤟 {isTamil ? 'குறியீட்டு மொழி அவதார்' : 'Sign Language Avatar'}</Text>
@@ -803,7 +806,7 @@ export default function BankScreen() {
               currentMode={bankCommMode}
               onSelectMode={(mode) => {
                 setBankCommMode(mode);
-                if (mode === 'text_to_sign' && !avatarMounted) {
+                if ((mode === 'text_to_sign' || mode === 'sign_to_text') && !avatarMounted) {
                   setAvatarMounted(true);
                 }
               }}
@@ -820,6 +823,7 @@ export default function BankScreen() {
               <SignToTextVoicePanel
                 staffType="staff"
                 allowedPhrases={['BANK_ACCOUNT_REQUIRED_DETAILS']}
+                avatarRef={avatarRef}
               />
             )}
 
@@ -900,11 +904,11 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
   },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: C.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 16 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 24 },
   gridCard: {
-    flex: 1, minWidth: 110, backgroundColor: C.bg,
+    width: '48%', minHeight: 130, backgroundColor: C.bg,
     borderColor: C.border, borderWidth: 1.5, borderRadius: 16,
-    paddingVertical: 20, paddingHorizontal: 14,
+    paddingVertical: 16, paddingHorizontal: 10,
     alignItems: 'center', justifyContent: 'center', gap: 10,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1,
   },
@@ -933,7 +937,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: C.primary, paddingVertical: 14, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center', marginTop: 8,
     shadowColor: C.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
   },
   primaryButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
