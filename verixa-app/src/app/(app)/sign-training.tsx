@@ -272,7 +272,7 @@ export default function SignTrainingScreen() {
               {selectedPhrase.category}: Recording
             </Text>
             <Text style={[S.headerSub, { fontSize: scale(12, width, 10, 14) }]}>
-              Label: {selectedPhrase.label}
+              "{selectedPhrase.display}"
             </Text>
           </View>
         </View>
@@ -518,9 +518,6 @@ export default function SignTrainingScreen() {
                 {/* Phrase text */}
                 <Text style={[S.phraseDisplay, { fontSize: scale(16, width, 14, 19) }]}>
                   "{phraseItem.display}"
-                </Text>
-                <Text style={[S.phraseLabel, { fontSize: scale(11, width, 10, 13) }]}>
-                  Label: {phraseItem.label}
                 </Text>
 
                 {/* Mini progress bar */}
