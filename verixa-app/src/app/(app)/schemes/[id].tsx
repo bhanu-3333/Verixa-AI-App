@@ -10,7 +10,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   ScrollView,
   ActivityIndicator,
   Linking,
@@ -23,7 +22,7 @@ import { SchemeService, Scheme } from '../../../services/SchemeService';
 import { SupportedLanguage } from '../../../services/LanguageService';
 import { useLanguage } from '../../../components/LanguageProvider';
 import { Feather, MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─── Design tokens — mirrors home.tsx ────────────────────────────────────────
 const PRIMARY    = '#1A56DB';
