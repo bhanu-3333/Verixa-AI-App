@@ -83,6 +83,7 @@ class SignService:
                     self.labels = json.load(f)
                 self._model_loaded = True
                 app_logger.info(f"[SignService] Loaded LSTM model from {MODEL_PATH}")
+                app_logger.info("[DEBUG] Model loaded successfully")
             except Exception as e:
                 app_logger.error(f"[SignService] Failed to load Keras model: {e}")
                 self.model = None
@@ -243,8 +244,11 @@ class SignService:
         # Shape: (1, SEQUENCE_LENGTH, FEATURE_DIM)
         input_batch = np.expand_dims(input_sequence, axis=0)
 
+        app_logger.info("[DEBUG] Sequence Received")
+
         # Run model inference if trained model exists
         if self.model is not None:
+            app_logger.info("[DEBUG] Model Loaded")
             try:
                 preds = self.model.predict(input_batch, verbose=0)[0]
                 best_class_idx = int(np.argmax(preds))
@@ -255,8 +259,13 @@ class SignService:
                 if not phrase:
                     phrase = PHRASES[best_class_idx]
 
-                SIGN_CONFIDENCE_THRESHOLD = 0.70
+                SIGN_CONFIDENCE_THRESHOLD = 0.65
                 accepted = confidence >= SIGN_CONFIDENCE_THRESHOLD
+
+                app_logger.info(f"[DEBUG] Prediction: {phrase}")
+                app_logger.info(f"[DEBUG] Confidence: {confidence:.4f}")
+                if not accepted:
+                    app_logger.info(f"[DEBUG] Confidence below threshold: {confidence:.4f}")
 
                 return {
                     "phrase": phrase if accepted else None,
