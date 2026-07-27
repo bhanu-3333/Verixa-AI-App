@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useLanguage } from '../../components/LanguageProvider';
+
 import { SignLanguageAvatar, SignLanguageAvatarRef } from '../../components/SignLanguageAvatar';
 import SignToTextDetector from '../../components/SignToTextDetector';
 import { translateTextToSigml } from '../../services/avatarService';
@@ -513,9 +514,9 @@ export default function HospitalScreen() {
   const handleStartVoiceInput = useCallback(() => {
     setVoiceListening(true);
     setTimeout(() => {
-      setVoiceText(t('hospital_voice_not_available') || 'Voice-to-text requires a native build. Please type your message.');
+      setVoiceText(t('voice_expo_go_notice') || 'Voice input unavailable. Please type your message.');
       setVoiceListening(false);
-    }, 1500);
+    }, 800);
   }, [t]);
 
   return (
@@ -752,9 +753,9 @@ export default function HospitalScreen() {
 
         {step === 3 && (
           <View style={styles.step3Container}>
-            {/* ── Background-preloaded avatar (hidden until Option 3 selected) ── */}
+            {/* ── Background-preloaded avatar (visible for text_to_sign & sign_to_text) ── */}
             {avatarMounted && (
-              <View style={{ height: commMode === 'text_to_sign' ? undefined : 0, overflow: 'hidden' }}>
+              <View style={{ height: (commMode === 'text_to_sign' || commMode === 'sign_to_text') ? undefined : 0, overflow: 'hidden' }}>
                 <View style={styles.card}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                     <Text style={{ fontSize: 16, fontWeight: '700', color: C.text }}>{t('hospital_text_voice_to_sign') || 'Sign Language Avatar'}</Text>
@@ -803,7 +804,12 @@ export default function HospitalScreen() {
             {/* ── 3 Communication Option Selector ── */}
             <CommunicationModeSelector
               currentMode={commMode}
-              onSelectMode={(mode) => setCommMode(mode)}
+              onSelectMode={(mode) => {
+                setCommMode(mode);
+                if ((mode === 'text_to_sign' || mode === 'sign_to_text') && !avatarMounted) {
+                  setAvatarMounted(true);
+                }
+              }}
               domain="hospital"
             />
 
@@ -817,6 +823,7 @@ export default function HospitalScreen() {
               <SignToTextVoicePanel
                 staffType="doctor"
                 allowedPhrases={['WHEN_SHOULD_I_TAKE_MY_TABLETS']}
+                avatarRef={avatarRef}
               />
             )}
 
