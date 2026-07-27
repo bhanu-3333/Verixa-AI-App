@@ -38,6 +38,7 @@ export const TextVoiceToSignPanel: React.FC<TextVoiceToSignPanelProps> = ({
   const [isTranslating, setIsTranslating]             = useState(false);
   const [isListening, setIsListening]                 = useState(false);
   const [recognizedVoiceText, setRecognizedVoiceText] = useState<string | null>(null);
+  const [voiceNotice, setVoiceNotice]                 = useState<string | null>(null);
 
   const handleTranslateAndPlay = useCallback(async (textToPlay: string) => {
     if (!textToPlay.trim()) return;
@@ -64,32 +65,37 @@ export const TextVoiceToSignPanel: React.FC<TextVoiceToSignPanelProps> = ({
 
   const handleVoiceInput = useCallback(() => {
     if (isListening) { setIsListening(false); return; }
-    if (Platform.OS === 'web' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    setVoiceNotice(null);
+
+    if (Platform.OS === 'web' && (typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window))) {
       const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       const rec = new SR();
       rec.lang = isTamil ? 'ta-IN' : 'en-US';
       rec.interimResults = false;
       rec.maxAlternatives = 1;
-      rec.onstart  = () => setIsListening(true);
+      rec.onstart  = () => {
+        console.log('[DEBUG] Voice recognition initialized');
+        setIsListening(true);
+      };
       rec.onend    = () => setIsListening(false);
       rec.onerror  = () => setIsListening(false);
       rec.onresult = (event: any) => {
         const spoken = event.results[0]?.[0]?.transcript;
-        if (spoken) { setRecognizedVoiceText(spoken); setInputMessage(spoken); }
+        if (spoken) {
+          setRecognizedVoiceText(spoken);
+          setInputMessage(spoken);
+          handleTranslateAndPlay(spoken);
+        }
       };
       rec.start();
     } else {
-      setIsListening(true);
-      setTimeout(() => {
-        setIsListening(false);
-        const fallbackText = isTamil
-          ? (isHospital ? 'தயவுசெய்து உங்கள் அடையாள சான்றை வழங்கவும்' : 'தயவுசெய்து உங்கள் சான்றுகளை சரிபார்க்கவும்')
-          : (isHospital ? 'Please provide your identity proof.' : 'Please confirm your account details.');
-        setRecognizedVoiceText(fallbackText);
-        setInputMessage(fallbackText);
-      }, 1200);
+      setVoiceNotice(
+        isTamil
+          ? 'குரல் அங்கீகாரம் Expo Go அல்லது இந்த உலாவியில் ஆதரிக்கப்படவில்லை. குரல் உள்ளீட்டிற்கு Development Build, APK அல்லது Chrome தேவை. செய்தியை தட்டச்சு செய்யவும்.'
+          : 'Voice recognition is unavailable in Expo Go / this browser. Voice input requires a Development Build, standalone APK, or Chrome. Please type your message.'
+      );
     }
-  }, [isListening, isTamil, isHospital]);
+  }, [isListening, isTamil, handleTranslateAndPlay]);
 
   return (
     <View style={S.panel}>
@@ -152,6 +158,14 @@ export const TextVoiceToSignPanel: React.FC<TextVoiceToSignPanelProps> = ({
         <View style={S.speechBox}>
           <Text style={S.speechLabel}>{isTamil ? 'உணரப்பட்ட பேச்சு:' : 'Recognized Speech:'}</Text>
           <Text style={S.speechText}>"{recognizedVoiceText}"</Text>
+        </View>
+      ) : null}
+
+      {/* Voice notice for Expo Go / Unsupported environments */}
+      {voiceNotice ? (
+        <View style={S.noticeBox}>
+          <Feather name="info" size={14} color="#D97706" style={{ marginRight: 6 }} />
+          <Text style={S.noticeText}>{voiceNotice}</Text>
         </View>
       ) : null}
 
@@ -268,4 +282,15 @@ const S = StyleSheet.create({
     borderColor:     '#C5D8F0',
   },
   preparingText: { fontSize: 12, color: TEXT_MID, fontWeight: '600' },
+
+  noticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+  },
+  noticeText: { fontSize: 12, color: '#92400E', fontWeight: '600', flex: 1 },
 });

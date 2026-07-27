@@ -129,7 +129,7 @@ const ta: Record<string, string> = {
   bank_waiting_for_sign: 'சைகைக்காக காத்திருக்கிறோம்...',
   bank_sign_not_recognized: 'சைகை தெளிவாக அறியப்படவில்லை. மீண்டும் முயற்சிக்கவும்.',
   bank_model_not_ready: 'சைகை அறிதல் மாதிரி தயாராகவில்லை.',
-  bank_sign_limitation: 'நேரலை சைகை அறிதல் இணையதளத்தில் (MediaPipe) இயங்கும். Android/iOS இல் Native Build தேவை.',
+  bank_sign_limitation: 'நேரலை சைகை அறிதல் செயல்பாட்டில் உள்ளது.',
 
   // Mode 3 — Text / Voice → Sign Language
   bank_text_voice_to_sign: 'உரை / குரல் → சைகை மொழி',
@@ -328,8 +328,8 @@ const ta: Record<string, string> = {
   hospital_replay: 'மீண்டும் இயக்கு',
   hospital_loading_avatar: 'சைகை மொழி அவதார் ஏற்றுகிறது...',
   hospital_model_not_ready: 'சைகை அறிதல் மாதிரி தயாராகவில்லை.',
-  hospital_voice_not_available: 'குரலை உரையாக மாற்றுவதற்கு Native Build தேவை. தயவுசெய்து தட்டச்சல் செய்யவும்.',
-  hospital_sign_limitation: 'சைகை அறிதல் இணையதளத்தில் (MediaPipe) இயங்கும். Android/iOS இல் Native Development Build தேவை.',
+  hospital_voice_not_available: 'குரல் உள்ளீடு தற்போது கிடைக்கவில்லை. உங்கள் செய்தியை தட்டச்சு செய்யவும்.',
+  hospital_sign_limitation: 'நேரலை சைகை அறிதல் செயல்பாட்டில் உள்ளது.',
 
   // Body Parts
   part_head: 'தலை (Head)',
@@ -386,6 +386,52 @@ const ta: Record<string, string> = {
   pain_moderate: 'நடுத்தர வலி',
   pain_severe: 'கடுமையான வலி',
   pain_worst: 'மிகக் கடுமையான வலி',
+
+  // Home Hero & Cards
+  home_hi: 'வணக்கம்,',
+  home_greeting_sub: 'இன்று நாங்கள் உங்களுக்கு எவ்வாறு உதவ முடியும்?',
+  home_sign_translator_title: 'சைகை\nமொழிபெயர்ப்பாளர்',
+  home_sign_translator_desc: 'சைகையை உரை மற்றும் குரலாக மாற்றவும்',
+  home_text_to_sign_title: 'உரையிலிருந்து\nசைகை',
+  home_text_to_sign_desc: 'உரையை சைகையாக மாற்றவும்',
+  home_schemes_title_short: 'அரசு\nதிட்டங்கள்',
+  home_schemes_desc_short: 'திட்டங்கள் & உதவிகளைக் கண்டறியவும்',
+  home_emergency_title_short: 'அவசர\nSOS',
+  home_emergency_desc_short: 'உடனடி உதவி & எச்சரிக்கைகள்',
+  home_comm_modes_title: 'தொடர்பு முறைகள்',
+  home_comm_modes_desc: 'மென்மையான தொடர்புக்கு ஒரு முறையைத் தேர்ந்தெடுக்கவும்',
+  home_select_mode_btn: 'முறையைத் தேர்ந்தெடுக்கவும்  →',
+
+  // Bottom Nav & Drawer
+  nav_home: 'முகப்பு',
+  nav_schemes: 'திட்டங்கள்',
+  nav_mode: 'முறை',
+  nav_profile: 'சுயவிவரம்',
+  drawer_title: 'வெரிக்சா AI',
+  drawer_subtitle: 'வழிசெலுத்தல் மெனு',
+  drawer_sign_to_text: 'சைகையிலிருந்து உரை',
+  drawer_text_to_sign: 'உரையிலிருந்து சைகை',
+  drawer_schemes: 'அரசு திட்டங்கள்',
+  drawer_bank_mode: 'வங்கி முறை',
+  drawer_hospital_mode: 'மருத்துவமனை முறை',
+  drawer_profile: 'சுயவிவரம்',
+
+  // Profile Screen
+  profile_title: 'சுயவிவரம்',
+  profile_subtitle: 'பயனர் கணக்கு & அவசர தொடர்பு',
+  profile_registered_details: 'பதிவு செய்யப்பட்ட விவரங்கள்',
+  profile_emergency_contact: 'அவசர தொடர்பு',
+  profile_name: 'முழு பெயர்',
+  profile_email: 'மின்னஞ்சல் முகவரி',
+  profile_language: 'விருப்பமான மொழி',
+  profile_account_status: 'கணக்கு நிலை',
+  profile_contact_name: 'தொடர்பு பெயர்',
+  profile_contact_phone: 'தொலைபேசி எண்',
+  profile_contact_relation: 'உறவு',
+  profile_logout: 'வெளியேறு',
+  profile_logout_confirm: 'நீங்கள் வெளியேற விரும்புகிறீர்களா?',
+  voice_expo_go_notice: 'குரல் உள்ளீடு தற்போது கிடைக்கவில்லை. உங்கள் செய்தியை தட்டச்சு செய்யவும்.',
 };
 
 export default ta;
+

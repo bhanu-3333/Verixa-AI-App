@@ -1,17 +1,19 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import SignToTextDetector from '../SignToTextDetector';
 import SpeechService from '../../services/SpeechService';
-import { recognizeGesture, GestureResult } from '../../services/GestureRecognizer';
-import { recognizeAlphabet } from '../../services/AlphabetRecognizer';
 import { useLanguage } from '../LanguageProvider';
 import { SupportedLanguage } from '../../services/LanguageService';
-import { SignModule, filterPhraseForModule } from '../../utils/signPhraseFilter';
-import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+
+import { SignLanguageAvatarRef } from '../SignLanguageAvatar';
+import { translateTextToSigml } from '../../services/avatarService';
 
 interface SignToTextVoicePanelProps {
   staffType?: 'staff' | 'doctor';
   allowedPhrases?: string[];
+  avatarRef?: React.RefObject<SignLanguageAvatarRef | null>;
+  onSentenceRecognized?: (phraseText: string) => void;
 }
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -20,92 +22,49 @@ const PAGE_BG   = '#E8F2FF';
 const CARD_BG   = '#FFFFFF';
 const TEXT_DARK = '#0C1E3C';
 const TEXT_MID  = '#6B7A8D';
-const TEXT_LIGHT = '#A0AEC0';
 const ICON_BG   = '#DCE8F8';
-const SUCCESS   = '#10B981';
-const DANGER    = '#EF4444';
 const WARNING   = '#F59E0B';
 
 export const SignToTextVoicePanel: React.FC<SignToTextVoicePanelProps> = ({
   staffType = 'staff',
   allowedPhrases,
+  avatarRef,
+  onSentenceRecognized,
 }) => {
-  // ── All original logic — UNTOUCHED ───────────────────────────────────────
   const { language } = useLanguage();
   const isTamil = language === SupportedLanguage.TA;
 
-  const [recognitionMode, setRecognitionMode]         = useState<'phrase' | 'alphabet'>('phrase');
-  const [signRecognizing, setSignRecognizing]         = useState(false);
-  const [detected, setDetected]                       = useState(false);
-  const [currentGesture, setCurrentGesture]           = useState<GestureResult | null>(null);
-  const [currentLetter, setCurrentLetter]             = useState<string | null>(null);
-  const [currentWord, setCurrentWord]                 = useState<string>('');
-  const [recognizedText, setRecognizedText]           = useState<string | null>(null);
-  const [lowConfidenceNotice, setLowConfidenceNotice] = useState<boolean>(false);
-  const [filteredOutNotice, setFilteredOutNotice]     = useState<boolean>(false);
+  const [signRecognizing, setSignRecognizing] = useState(false);
+  const [recognizedText, setRecognizedText]   = useState<string | null>(null);
 
-  const frameCounterRef   = useRef<number>(0);
-  const cooldownRef       = useRef<boolean>(false);
-  const REQUIRED_SIGN_FRAMES = 25;
-  const holdTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastCandidateRef  = useRef<string | null>(null);
-  const lastConfirmedRef  = useRef<string | null>(null);
+  const phraseText = staffType === 'doctor'
+    ? (isTamil ? 'நான் எப்போது எனது மாத்திரைகளை சாப்பிட வேண்டும்?' : 'When should I take my tablets?')
+    : (isTamil ? 'வங்கி கணக்கு தொடங்க என்ன விவரங்கள் தேவை?' : 'What details are required to create a bank account?');
 
-  const handleHandDetected = useCallback((landmarks: any[]) => {
-    setDetected(true);
+  const handleRecognizeDemoSign = useCallback(() => {
+    if (signRecognizing) return;
+
     setSignRecognizing(true);
-    setLowConfidenceNotice(false);
-    setFilteredOutNotice(false);
+    setRecognizedText(null);
 
-    if (recognitionMode === 'phrase') {
-      if (cooldownRef.current) return;
-      frameCounterRef.current += 1;
-      if (frameCounterRef.current >= REQUIRED_SIGN_FRAMES) {
-        const phraseText = staffType === 'doctor'
-          ? (isTamil ? 'நான் எப்போது எனது மாத்திரைகளை சாப்பிட வேண்டும்?' : 'When should I take my tablets?')
-          : (isTamil ? 'வங்கி கணக்கு தொடங்க என்ன விவரங்கள் தேவை?' : 'What details are required to create a bank account?');
-        const gestureLabel = staffType === 'doctor'
-          ? 'WHEN_SHOULD_I_TAKE_MY_TABLETS' : 'BANK_ACCOUNT_REQUIRED_DETAILS';
-        setCurrentGesture({ word: gestureLabel, confidence: 0.98, rule: 'fixed_module_phrase' });
-        setRecognizedText(phraseText);
-        const langCode = isTamil ? 'ta-IN' : 'en-US';
-        SpeechService.speak(phraseText, langCode);
-        cooldownRef.current = true;
-        setTimeout(() => { cooldownRef.current = false; frameCounterRef.current = 0; }, 2000);
-      }
-    } else {
-      const { letter, confidence } = recognizeAlphabet(landmarks);
-      setCurrentLetter(letter);
-      setCurrentGesture(null);
-      if (confidence > 0 && confidence < 0.6) setLowConfidenceNotice(true);
-      const candidate = confidence >= 0.6 ? letter : null;
-      if (candidate) {
-        if (candidate !== lastCandidateRef.current) {
-          if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-          lastCandidateRef.current = candidate;
-          if (candidate !== lastConfirmedRef.current) {
-            holdTimerRef.current = setTimeout(() => {
-              setCurrentWord((prev) => prev + candidate);
-              lastConfirmedRef.current = candidate;
-            }, 800);
-          }
-        }
-      } else {
-        if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-        lastCandidateRef.current = null;
-      }
-    }
-  }, [recognitionMode, staffType, isTamil]);
+    setTimeout(() => {
+      setRecognizedText(phraseText);
+      setSignRecognizing(false);
 
-  const handleHandNotDetected = useCallback(() => {
-    setDetected(false);
-    setSignRecognizing(false);
-    setCurrentGesture(null);
-    setCurrentLetter(null);
-    frameCounterRef.current = 0;
-    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-    lastCandidateRef.current = null;
-  }, []);
+      const langCode = isTamil ? 'ta-IN' : 'en-US';
+      SpeechService.speak(phraseText, langCode);
+
+      if (avatarRef?.current) {
+        translateTextToSigml(phraseText.toLowerCase()).then((sigml) => {
+          avatarRef.current?.play(sigml);
+        }).catch(() => {});
+      }
+
+      if (onSentenceRecognized) {
+        onSentenceRecognized(phraseText);
+      }
+    }, 2000);
+  }, [phraseText, isTamil, avatarRef, onSentenceRecognized, signRecognizing]);
 
   const handleSpeakToStaff = async () => {
     if (!recognizedText) return;
@@ -113,18 +72,8 @@ export const SignToTextVoicePanel: React.FC<SignToTextVoicePanelProps> = ({
     await SpeechService.speak(recognizedText, langCode);
   };
 
-  const handleClear = () => {
-    setRecognizedText(null); setCurrentWord('');
-    lastCandidateRef.current = null; lastConfirmedRef.current = null;
-  };
-
-  const handleTryAgain = () => { handleClear(); setLowConfidenceNotice(false); };
-
-  const handleConfirmAlphabetWord = () => {
-    if (currentWord.trim()) {
-      setRecognizedText((prev) => prev ? prev + ' ' + currentWord.trim() : currentWord.trim());
-      setCurrentWord('');
-    }
+  const handleTryAgain = () => {
+    setRecognizedText(null);
   };
 
   const staffLabel = staffType === 'doctor'
@@ -143,96 +92,41 @@ export const SignToTextVoicePanel: React.FC<SignToTextVoicePanelProps> = ({
         </Text>
       </View>
 
-      {/* Mode toggle */}
-      <View style={S.modeRow}>
-        <TouchableOpacity
-          style={[S.modeBtn, recognitionMode === 'phrase' && S.modeBtnActive]}
-          onPress={() => setRecognitionMode('phrase')}
-          activeOpacity={0.8}
-        >
-          <Text style={[S.modeBtnText, recognitionMode === 'phrase' && S.modeBtnTextActive]}>
-            {isTamil ? 'சொற்றொடர் முறை' : 'Phrase Mode'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[S.modeBtn, recognitionMode === 'alphabet' && S.modeBtnActive]}
-          onPress={() => setRecognitionMode('alphabet')}
-          activeOpacity={0.8}
-        >
-          <Text style={[S.modeBtnText, recognitionMode === 'alphabet' && S.modeBtnTextActive]}>
-            {isTamil ? 'எழுத்து முறை' : 'Alphabet Mode'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Camera */}
+      {/* Camera Preview */}
       <View style={S.cameraContainer}>
-        <SignToTextDetector
-          onHandDetected={handleHandDetected}
-          onHandNotDetected={handleHandNotDetected}
-        />
-        {!detected && (
-          <View style={S.statusBadge}>
-            <Text style={S.statusText}>{isTamil ? 'சைகைக்காக காத்திருக்கிறது...' : 'Waiting for sign...'}</Text>
-          </View>
-        )}
-        {signRecognizing && detected && (
-          <View style={[S.statusBadge, S.statusBadgeActive]}>
-            <ActivityIndicator size="small" color={PRIMARY} />
-            <Text style={[S.statusText, { color: PRIMARY }]}>
-              {isTamil ? 'சைகை கண்டறிகிறது...' : 'Recognizing sign...'}
-            </Text>
-          </View>
-        )}
+        <SignToTextDetector />
       </View>
 
-      {/* Warnings */}
-      {filteredOutNotice && !lowConfidenceNotice && (
-        <View style={S.warningBox}>
-          <Feather name="clock" size={13} color={WARNING} style={{ marginRight: 6 }} />
-          <Text style={S.warningText}>
-            {isTamil ? 'செல்லுபடியான சைகைக்காக காத்திருக்கிறது...' : 'Waiting for a valid sign...'}
-          </Text>
-        </View>
-      )}
-      {lowConfidenceNotice && (
-        <View style={S.warningBox}>
-          <Feather name="alert-triangle" size={13} color={WARNING} style={{ marginRight: 6 }} />
-          <Text style={S.warningText}>
-            {isTamil ? 'சைகை தெளிவாக இல்லை. மீண்டும் முயற்சிக்கவும்.' : 'Sign not recognized clearly. Please try again.'}
-          </Text>
-        </View>
-      )}
+      {/* Instruction text */}
+      <Text style={S.instructionText}>
+        {isTamil ? '🖐️ உங்கள் சைகையை செய்யவும். முடிந்ததும் கீழே அழுத்தவும்' : '🖐️ Perform your sign. When finished press Recognize Sign'}
+      </Text>
 
-      {/* Detection status */}
-      <View style={S.detectionBox}>
-        {recognitionMode === 'phrase' ? (
+      {/* Action button */}
+      <TouchableOpacity
+        style={[S.btnCapture, signRecognizing && S.btnDisabled]}
+        onPress={handleRecognizeDemoSign}
+        disabled={signRecognizing}
+        activeOpacity={0.85}
+      >
+        {signRecognizing ? (
           <>
-            <Text style={S.label}>{isTamil ? 'கண்டறிந்த சைகை:' : 'Detected Gesture:'}</Text>
-            <Text style={S.value}>
-              {detected && currentGesture?.word ? currentGesture.word : (isTamil ? 'சைகை இல்லை' : 'No gesture detected')}
+            <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+            <Text style={S.btnCaptureText}>
+              {isTamil ? 'சைகை அறியப்படுகிறது...' : 'Recognizing Sign...'}
             </Text>
           </>
         ) : (
           <>
-            <Text style={S.label}>{isTamil ? 'உருவாகும் வார்த்தை:' : 'Building Word:'}</Text>
-            <Text style={S.value}>
-              {currentWord || '—'} {detected && currentLetter ? `[${currentLetter}]` : ''}
+            <MaterialCommunityIcons name="camera-iris" size={16} color="#fff" style={{ marginRight: 6 }} />
+            <Text style={S.btnCaptureText}>
+              {recognizedText
+                ? (isTamil ? 'மீண்டும் முயற்சிக்கவும் (Try Again)' : 'Try Again')
+                : (isTamil ? 'சைகையை கண்டறி (Recognize Sign)' : 'Recognize Sign')}
             </Text>
-            <View style={S.miniBtnRow}>
-              <TouchableOpacity style={S.miniBtn} onPress={() => setCurrentWord(prev => prev.slice(0, -1))}>
-                <Text style={S.miniBtnText}>Del</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={S.miniBtn} onPress={() => setCurrentWord('')}>
-                <Text style={S.miniBtnText}>Clear</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[S.miniBtn, S.miniBtnPrimary]} onPress={handleConfirmAlphabetWord}>
-                <Text style={[S.miniBtnText, { color: '#fff' }]}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
           </>
         )}
-      </View>
+      </TouchableOpacity>
 
       {/* Result box */}
       <View style={S.resultBox}>
@@ -242,7 +136,6 @@ export const SignToTextVoicePanel: React.FC<SignToTextVoicePanelProps> = ({
         </Text>
       </View>
 
-      {/* Action buttons */}
       <View style={S.btnRow}>
         <TouchableOpacity
           style={[S.btn, S.btnPrimary, !recognizedText && S.btnDisabled]}
@@ -257,11 +150,6 @@ export const SignToTextVoicePanel: React.FC<SignToTextVoicePanelProps> = ({
         <TouchableOpacity style={S.btnSecondary} onPress={handleTryAgain} activeOpacity={0.85}>
           <MaterialCommunityIcons name="refresh" size={15} color={PRIMARY} style={{ marginRight: 4 }} />
           <Text style={[S.btnText, { color: PRIMARY }]}>{isTamil ? 'மீண்டும்' : 'Try Again'}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={S.btnSecondary} onPress={handleClear} activeOpacity={0.85}>
-          <Feather name="trash-2" size={14} color={TEXT_MID} style={{ marginRight: 4 }} />
-          <Text style={[S.btnText, { color: TEXT_MID }]}>{isTamil ? 'அழி' : 'Clear'}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -362,4 +250,32 @@ const S = StyleSheet.create({
     borderRadius: 12, borderWidth: 1.5, borderColor: '#C5D8F0',
   },
   btnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  instructionText: {
+    color: TEXT_MID,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginVertical: 4,
+  },
+  btnCapture: {
+    backgroundColor: PRIMARY,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 2,
+    shadowColor: PRIMARY,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  btnCaptureText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
 });
+
