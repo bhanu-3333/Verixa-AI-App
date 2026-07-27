@@ -1,59 +1,34 @@
-/**
- * Verixa AI — Sign to Text Detector (Native Placeholder)
- * Opens the camera view on native platforms to support modular architecture without crashing.
- */
-
-import React, { useEffect } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
+import React from 'react';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
 interface SignToTextDetectorProps {
-  onHandsDetected?: (hands: { leftHand: any[] | null; rightHand: any[] | null }) => void;
-  onHandDetected?: (landmarks: any[]) => void;
+  onHandsDetected?: (hands: any) => void;
+  onHandDetected?: (landmarks: any) => void;
   onHandNotDetected?: () => void;
 }
 
-export default function SignToTextDetector({
-  onHandDetected,
-  onHandNotDetected,
-}: SignToTextDetectorProps) {
+export default function SignToTextDetector({}: SignToTextDetectorProps) {
   const [permission, requestPermission] = useCameraPermissions();
 
-  useEffect(() => {
-    if (!permission?.granted) {
-      requestPermission();
-    }
-  }, [permission]);
-
   if (!permission) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#00FFCC" />
-        <Text style={styles.statusText}>Checking camera permissions...</Text>
-      </View>
-    );
+    return <View style={styles.container} />;
   }
 
   if (!permission.granted) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Camera permission is required.</Text>
+      <View style={styles.permissionContainer}>
+        <Text style={styles.permissionText}>Camera permission is required</Text>
+        <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
+          <Text style={styles.permissionBtnText}>Grant Permission</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <CameraView style={StyleSheet.absoluteFill} facing="front" />
-      
-      <View style={styles.banner}>
-        <Text style={styles.bannerText}>
-          Real-time hand tracking runs on Web.
-        </Text>
-        <Text style={styles.subBannerText}>
-          (Requires custom Native Development Build for Mobile)
-        </Text>
-      </View>
+      <CameraView style={styles.camera} facing="front" />
     </View>
   );
 }
@@ -61,53 +36,35 @@ export default function SignToTextDetector({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    position: 'relative',
     backgroundColor: '#000',
-    borderRadius: 16,
     overflow: 'hidden',
   },
-  center: {
+  camera: {
     flex: 1,
+  },
+  permissionContainer: {
+    flex: 1,
+    backgroundColor: '#000',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0a0a16',
     padding: 20,
   },
-  statusText: {
+  permissionText: {
     color: '#fff',
-    marginTop: 12,
     fontSize: 14,
-    fontWeight: '500',
-  },
-  errorText: {
-    color: '#FF3366',
-    fontSize: 14,
-    fontWeight: '600',
+    marginBottom: 12,
     textAlign: 'center',
   },
-  banner: {
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
-    backgroundColor: 'rgba(10, 10, 22, 0.85)',
-    paddingVertical: 12,
+  permissionBtn: {
+    backgroundColor: '#1A56DB',
     paddingHorizontal: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 10,
+    borderRadius: 8,
   },
-  bannerText: {
-    color: '#00FFCC',
+  permissionBtnText: {
+    color: '#fff',
     fontSize: 14,
     fontWeight: '600',
-    textAlign: 'center',
-  },
-  subBannerText: {
-    color: '#aaa',
-    fontSize: 11,
-    marginTop: 2,
-    textAlign: 'center',
   },
 });
+
