@@ -11,13 +11,12 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Platform,
   useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLanguage } from '../../components/LanguageProvider';
 
 // ─── Design tokens — mirrors home.tsx ────────────────────────────────────────
@@ -73,7 +72,13 @@ export default function ModeScreen() {
       <View style={[S.header, { paddingTop: insets.top + 4, paddingHorizontal: hPad }]}>
         <TouchableOpacity
           style={S.backBtn}
-          onPress={() => router.replace('/(app)/home')}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(app)/home');
+            }
+          }}
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
