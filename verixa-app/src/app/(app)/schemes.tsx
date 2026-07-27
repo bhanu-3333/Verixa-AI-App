@@ -10,7 +10,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   ScrollView,
   TextInput,
   ActivityIndicator,
@@ -22,8 +21,9 @@ import { router } from 'expo-router';
 import { SchemeService, Scheme } from '../../services/SchemeService';
 import { SupportedLanguage } from '../../services/LanguageService';
 import { useLanguage } from '../../components/LanguageProvider';
+
 import { Feather, MaterialCommunityIcons, Ionicons, FontAwesome5 } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ─── Design tokens — mirrors home.tsx ────────────────────────────────────────
 const PRIMARY    = '#1A56DB';
@@ -149,10 +149,10 @@ export default function SchemesHomeScreen() {
           <Feather name="arrow-left" size={scale(20, width, 18, 24)} color={PRIMARY} />
         </TouchableOpacity>
         <View style={S.headerText}>
-          <Text style={[S.headerTitle, { fontSize: scale(18, width, 15, 22) }]}>
+          <Text style={[S.headerTitle, { fontSize: scale(17, width, 14, 21) }]}>
             {t('schemes_title')}
           </Text>
-          <Text style={[S.headerSub, { fontSize: scale(12, width, 10, 14) }]}>
+          <Text style={[S.headerSub, { fontSize: scale(11, width, 10, 13) }]}>
             {t('schemes_subtitle')}
           </Text>
         </View>
@@ -232,9 +232,14 @@ export default function SchemesHomeScreen() {
           </ScrollView>
         )}
 
-        {/* ── Level Filter ─────────────────────────────────────────────────── */}
+        {/* ── Level Filter (Horizontal ScrollView to prevent wrapping) ─────── */}
         {activeTab === 'all' && (
-          <View style={S.levelRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={S.catScroll}
+            contentContainerStyle={S.catContent}
+          >
             {[
               { key: 'all',      label: t('schemes_level_all'),      icon: null,          lib: null },
               { key: 'central',  label: t('schemes_level_central'),  icon: 'bank',        lib: 'mci' },
@@ -262,7 +267,7 @@ export default function SchemesHomeScreen() {
                 </TouchableOpacity>
               );
             })}
-          </View>
+          </ScrollView>
         )}
 
         {/* ── Content ──────────────────────────────────────────────────────── */}
