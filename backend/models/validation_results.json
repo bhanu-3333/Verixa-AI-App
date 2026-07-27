@@ -12,7 +12,7 @@
     "correct_predictions": 10,
     "incorrect_predictions": 0,
     "accuracy_pct": 100.0,
-    "average_confidence": 1.0,
+    "average_confidence": 0.9999,
     "misclassified_as": [
       "None"
     ]
@@ -21,7 +21,7 @@
     "correct_predictions": 10,
     "incorrect_predictions": 0,
     "accuracy_pct": 100.0,
-    "average_confidence": 1.0,
+    "average_confidence": 0.9998,
     "misclassified_as": [
       "None"
     ]
