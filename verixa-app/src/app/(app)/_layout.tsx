@@ -6,16 +6,11 @@
 
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, Platform } from 'react-native';
-import { Stack, router, usePathname } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { getToken } from '../../utils/storage';
-import { SharedHeader } from '../../components/SharedHeader';
 
 export default function AppLayout() {
   const [ready, setReady] = useState(false);
-  const pathname = usePathname();
-
-  // Hide SharedHeader on home — home has its own transparent floating header
-  const hideHeader = pathname === '/' || pathname === '/home' || pathname.endsWith('/home');
 
   useEffect(() => {
     async function check() {
@@ -42,7 +37,6 @@ export default function AppLayout() {
 
   return (
     <View style={{ flex: 1 }}>
-      {!hideHeader && <SharedHeader />}
       <Stack screenOptions={{ headerShown: false }} />
     </View>
   );
