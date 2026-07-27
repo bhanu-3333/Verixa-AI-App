@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Verixa AI — MediaPipe Hands Mobile Detector</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, html { width: 100%; height: 100%; background: #000; overflow: hidden; }
+    #container { position: relative; width: 100%; height: 100%; }
+    video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); z-index: 1; }
+    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <video id="webcam" playsinline muted autoplay></video>
+    <canvas id="output_canvas"></canvas>
+  </div>
+  <script>
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('output_canvas');
+    const ctx = canvas.getContext('2d');
+
+    function notifyRN(payload) {
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+      }
+    }
+
+    async function setupCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false
+        });
+        video.srcObject = stream;
+        return new Promise((resolve) => {
+          video.onloadedmetadata = () => {
+            video.play().catch(function(){});
+            notifyRN({ type: 'CAMERA_STARTED' });
+            resolve();
+          };
+        });
+      } catch (err) {
+        notifyRN({ type: 'CAMERA_ERROR', error: err.message || 'Camera permission denied' });
+      }
+    }
+
+    async function initMediaPipe() {
+      await setupCamera();
+      if (!window.Hands) {
+        notifyRN({ type: 'CAMERA_ERROR', error: 'MediaPipe Hands library unavailable' });
+        return;
+      }
+
+      const hands = new window.Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+
+      hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      hands.onResults((results) => {
+        let leftHand = null;
+        let rightHand = null;
+        const detectedCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
+
+        if (detectedCount > 0) {
+          for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+            const lms = results.multiHandLandmarks[i];
+            const handedness = results.multiHandedness ? results.multiHandedness[i] : null;
+            if (handedness && handedness.label === 'Left') {
+              leftHand = lms;
+            } else if (handedness && handedness.label === 'Right') {
+              rightHand = lms;
+            }
+          }
+          if (!leftHand && !rightHand) {
+            leftHand = results.multiHandLandmarks[0];
+            if (results.multiHandLandmarks.length > 1) {
+              rightHand = results.multiHandLandmarks[1];
+            }
+          }
+        }
+
+        notifyRN({
+          type: 'HANDS_RESULTS',
+          handsDetected: detectedCount > 0,
+          detectedCount,
+          leftHand,
+          rightHand,
+          landmarks: detectedCount > 0 ? results.multiHandLandmarks[0] : null,
+          timestamp: Date.now()
+        });
+
+        if (canvas.width !== video.clientWidth || canvas.height !== video.clientHeight) {
+          canvas.width = video.clientWidth;
+          canvas.height = video.clientHeight;
+        }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (detectedCount > 0) {
+          for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+            const landmarks = results.multiHandLandmarks[i];
+            ctx.fillStyle = i === 0 ? '#FF3366' : '#FFCC00';
+            for (let j = 0; j < landmarks.length; j++) {
+              ctx.beginPath();
+              ctx.arc(landmarks[j].x * canvas.width, landmarks[j].y * canvas.height, 5, 0, 2 * Math.PI);
+              ctx.fill();
+            }
+          }
+        }
+      });
+
+      await hands.initialize();
+      notifyRN({ type: 'MEDIAPIPE_INITIALIZED' });
+
+      let isProcessing = false;
+      async function processFrame() {
+        if (video.readyState >= 2 && !video.paused && !isProcessing) {
+          isProcessing = true;
+          try {
+            await hands.send({ image: video });
+          } catch(e) {}
+          finally {
+            isProcessing = false;
+          }
+        }
+        requestAnimationFrame(processFrame);
+      }
+      processFrame();
+    }
+
+    initMediaPipe();
+  </script>
+</body>
+</html>
