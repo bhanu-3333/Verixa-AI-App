@@ -138,15 +138,22 @@ export default function EmergencyScreen() {
         isWeb ? (window.alert(mockMsg), navigateToActiveScreen()) : Alert.alert(t('emergency_title') || 'Emergency Alert (Test Mode)', mockMsg, [{ text: t('ok') || 'OK', onPress: navigateToActiveScreen }]);
       } else {
         setSuccess(false);
-        const errMsg = res.message || res.data?.error_message || t('emergency_alert_failed') || 'Emergency alert could not be sent.';
-        isWeb ? window.alert(errMsg) : Alert.alert(t('emergency_failed_popup_title') || 'SOS Failed', errMsg);
+        const techErr = res.message || res.data?.error_message || 'Emergency alert could not be sent.';
+        console.error('[Emergency SOS API Error]', techErr);
+        const userMsg = t('emergency_user_friendly_error') || 'Unable to send the SOS message right now.\nPlease try again later or contact support.';
+        isWeb ? window.alert(userMsg) : Alert.alert(t('emergency_failed_popup_title') || 'SOS Failed', userMsg);
       }
       try { const fresh = await getSOSHistory(); setHistory(fresh); } catch (_) {}
     } catch (e) {
       setSuccess(false);
-      const msg = e instanceof Error ? e.message : (t('emergency_alert_failed') || 'Failed to send SOS alert.');
-      Platform.OS === 'web' ? window.alert(msg) : Alert.alert(t('emergency_failed_popup_title') || 'SOS Failed', msg);
-      if (msg.includes('Authentication token required') || msg.includes('Session expired') || msg.includes('log in again')) router.replace('/(auth)/login');
+      const rawErr = e instanceof Error ? e.message : 'Failed to send SOS alert.';
+      console.error('[Emergency SOS Exception]', rawErr);
+      if (rawErr.includes('Authentication token required') || rawErr.includes('Session expired') || rawErr.includes('log in again')) {
+        router.replace('/(auth)/login');
+        return;
+      }
+      const userMsg = t('emergency_user_friendly_error') || 'Unable to send the SOS message right now.\nPlease try again later or contact support.';
+      Platform.OS === 'web' ? window.alert(userMsg) : Alert.alert(t('emergency_failed_popup_title') || 'SOS Failed', userMsg);
     } finally { setSending(false); }
   };
 
